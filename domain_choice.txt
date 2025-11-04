@@ -1,0 +1,10 @@
+Possible domains:
+
+1. Business-Productivity Software (~14%)
+What it is: Software designed to help businesses run more efficiently, manage workflows, collaborate, and track performance.
+Examples:
+Project management tools (like Jira, Asana, Trello)
+CRM systems (Salesforce, HubSpot)
+Internal dashboards or analytics platforms
+HR management software (employee tracking, payroll)
+Why Ukraine builds this: Many companies need custom enterprise tools for their operations, and outsourcing is cost-effective for these projects.
