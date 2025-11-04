@@ -61,8 +61,8 @@ python manage.py runserver
 
 1. **Clone the repository**:
 ```bash
-git clone <your-repo-url>
-cd <your-repo-folder>
+git clone https://github.com/highlander0302/The_app-backend
+cd The_app-backend
 ```
 
 2. **Create a virtual environment**:
@@ -96,36 +96,5 @@ python manage.py runserver
 ```
 
 7. Open your browser and go to `http://127.0.0.1:8000/` to see the app.
-
----
-
-## Notes for Beginners
-
-- **Django Admin**: You can access the admin panel at `http://127.0.0.1:8000/admin/`. You need to create a superuser first:
-```bash
-python manage.py createsuperuser
-```
-
-- **Making Changes**: If you modify models, always run:
-```bash
-python manage.py makemigrations
-python manage.py migrate
-```
-
-- **Stopping the Server**: Press `Ctrl + C` in your terminal.
-
----
-
-## Optional
-
-- To exit the Poetry shell, type:
-```bash
-exit
-```
-
-- To deactivate a venv:
-```bash
-deactivate
-```
 
 ---
