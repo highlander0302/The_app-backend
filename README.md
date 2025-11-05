@@ -7,7 +7,7 @@ Installing The App backend using **Python virtual environments (venv)**.
 ## Prerequisites
 
 - Python 3.10 or higher
-- Git (optional, if you want to clone the repo)
+- Git
 
 ---
 
