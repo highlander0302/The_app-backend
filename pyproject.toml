@@ -15,3 +15,9 @@ dependencies = [
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pylint (>=4.0.2,<5.0.0)",
+    "mypy (>=1.18.2,<2.0.0)"
+]
