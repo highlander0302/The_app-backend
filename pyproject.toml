@@ -19,5 +19,7 @@ build-backend = "poetry.core.masonry.api"
 [dependency-groups]
 dev = [
     "pylint (>=4.0.2,<5.0.0)",
-    "mypy (>=1.18.2,<2.0.0)"
+    "mypy (>=1.18.2,<2.0.0)",
+    "flake8 (>=7.3.0,<8.0.0)",
+    "black (>=25.9.0,<26.0.0)"
 ]
