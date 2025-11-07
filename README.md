@@ -1,12 +1,11 @@
 # The App Backend
-
-Installing The App backend using **Python virtual environments (venv)**.
+Installing The App backend using **Poetry**.
 
 ---
 
 ## Prerequisites
-
 - Python 3.10 or higher
+- Poetry ([Installation guide](https://python-poetry.org/docs/#installation))
 - Git
 
 ---
@@ -19,51 +18,53 @@ git clone https://github.com/highlander0302/The_app-backend
 cd The_app-backend
 ```
 
-### 2. Create a virtual environment
+### 2. Install dependencies
+Poetry will automatically create a virtual environment and install all dependencies from the lock file:
 ```bash
-python -m venv venv
+poetry install
 ```
 
-> **Note:** On some systems, you may need to use `python3` instead of `python`.
-
-### 3. Activate the virtual environment
-
-- **On Windows:**
+### 3. Apply database migrations
 ```bash
-  venv\Scripts\activate
+poetry run python manage.py migrate
 ```
 
-- **On macOS/Linux:**
+### 4. Run the development server
 ```bash
-  source venv/bin/activate
+poetry run python manage.py runserver
 ```
 
-### 4. Install dependencies
+### 5. Access the application
+Open your browser and go to `http://localhost:5173` to interact with the backend from the React frontend,
+or `http://127.0.0.1:8000/admin/` to see the app admin panel (backend).
+
+---
+
+## Working with Poetry
+
+### Activate the virtual environment
+If you prefer to work inside an activated shell (instead of prefixing commands with `poetry run`):
 ```bash
-pip install -r requirements.txt
+poetry env activate
 ```
 
-### 5. Apply database migrations
+you will see something like this:
 ```bash
-python manage.py migrate
+source /home/yourrootdir/somefolder/the_app-backend/.venv/bin/activate
+```
+Copy and pase this line in your teminal to activate the env.
+```bash
+*(the-app-backend-py3.12)* ➤ your_root_dir@your_admin_name-your_computer_model ~/some_dir/the_app-backend $
 ```
 
-### 6. Run the development server
+Then you can run commands directly:
 ```bash
 python manage.py runserver
 ```
 
-### 7. Access the application
-
-Open your browser and go to `http://127.0.0.1:8000/` to see the app.
-
----
-
-## Deactivating the Virtual Environment
-
-When you're done working on the project, you can deactivate the virtual environment by running:
+### Exit the Poetry
 ```bash
-deactivate
+exit
 ```
 
-This works the same way on Windows, macOS, and Linux.
+---
