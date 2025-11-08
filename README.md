@@ -54,14 +54,14 @@ or `http://127.0.0.1:8000/admin/` to see the app admin panel (backend).
 
 ---
 
-# Now when you've done with the project you can install and configure the database.
+## Now when you've done with the project you can install and configure the database.
 
 ---
 
-# PostgreSQL Setup & Environment Variables
+## PostgreSQL Setup & Environment Variables
 The backend uses PostgreSQL as the database. Each developer should create their own local database and `.env` file.
 
-## 1. Install PostgreSQL
+### 1. Install PostgreSQL
 * **Ubuntu / Debian:**
 
 ```bash
@@ -78,7 +78,7 @@ brew services start postgresql
 ```
 * **Windows:** Download and install from [PostgreSQL official site](https://www.postgresql.org/download/windows/).
 
-## 2. Create a Database and User
+### 2. Create a Database and User
 Open the PostgreSQL shell:
 
 ```bash
@@ -96,7 +96,7 @@ GRANT ALL PRIVILEGES ON DATABASE ecommerce_db TO your_username;
 
 Replace `ecommerce_db`, `your_username`, and `your_password` with your own preferred values.
 
-## 3. Create a `.env` File
+### 3. Create a `.env` File
 In the project root, at the same level as `manage.py`, create a `.env` file containing the database credentials:
 
 ```
@@ -109,14 +109,14 @@ POSTGRES_PORT=5432
 
 **Important:** The `.env` file must remain at the same level as `manage.py`, otherwise the backend will not be able to read the database credentials. Make sure this file is never committed to Git. Add it to `.gitignore` if not already included.
 
-## 4. Populate the Database (Optional)
+### 4. Populate the Database (Optional)
 If you want to use sample data:
 
 ```bash
 python manage.py loaddata db_data.json
 ```
 
-## 5. Run the Backend
+### 5. Run the Backend
 Activate your Poetry environment and run the server:
 
 ```bash
