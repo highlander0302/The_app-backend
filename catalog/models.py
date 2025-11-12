@@ -83,7 +83,6 @@ class Product(models.Model):
         'self', null=True, blank=True, on_delete=models.SET_NULL, related_name='variants'
     )
 
-    #TODO: utilize Pillow for image processing later
     image_main = models.URLField(blank=True)
     images = models.JSONField(default=list, blank=True)
 
@@ -103,9 +102,7 @@ class Product(models.Model):
 
     @property
     def is_in_stock(self) -> bool:
-        """
-        Returns True if the product has stock available, False otherwise.
-        """
+        """Returns True if the product has stock available, False otherwise."""
         return self.stock_quantity > 0
 
     def _generate_unique_slug(self) -> str:
@@ -130,9 +127,7 @@ class Product(models.Model):
 
 # --- Category-level Models (abstract) ---
 class ComputingDevice(Product):
-    """
-    Abstract model for computing devices (laptops, tablets, phones, etc.).
-    """
+    """Abstract model for computing devices (laptops, tablets, phones, etc.)."""
     processor = models.CharField(max_length=255)
     ram = models.IntegerField(help_text="RAM in GB")
     storage = models.IntegerField(help_text="Storage in GB")
@@ -144,9 +139,7 @@ class ComputingDevice(Product):
 
 
 class MobileDevice(Product):
-    """
-    Abstract model for mobile devices (smartphones, smartwatches, etc.).
-    """
+    """Abstract model for mobile devices (smartphones, smartwatches, etc.)."""
     operating_system = models.CharField(max_length=100)
     battery_capacity = models.IntegerField(help_text="Battery capacity in mAh")
     screen_size = models.FloatField(help_text="Screen size in inches")
@@ -157,9 +150,7 @@ class MobileDevice(Product):
 
 
 class AudioDevice(Product):
-    """
-    Abstract model for audio devices (headphones, speakers, etc.).
-    """
+    """Abstract model for audio devices (headphones, speakers, etc.)."""
     battery_life = models.IntegerField(help_text="Battery life in hours", null=True, blank=True)
     connectivity = models.CharField(max_length=100, blank=True)
     is_wireless = models.BooleanField(default=False)
@@ -169,9 +160,7 @@ class AudioDevice(Product):
 
 
 class ImagingDevice(Product):
-    """
-    Abstract model for imaging devices (cameras, camcorders, etc.).
-    """
+    """Abstract model for imaging devices (cameras, camcorders, etc.)."""
     resolution = models.CharField(max_length=50)
     sensor_type = models.CharField(max_length=50, null=True, blank=True)
     optical_zoom = models.FloatField(null=True, blank=True)
@@ -181,9 +170,7 @@ class ImagingDevice(Product):
 
 
 class GamingDevice(Product):
-    """
-    Abstract model for gaming devices (laptops, consoles, handhelds).
-    """
+    """Abstract model for gaming devices (laptops, consoles, handhelds)."""
     gpu = models.CharField(max_length=100, blank=True)
     storage_options = models.CharField(max_length=100, blank=True)
     screen_size = models.FloatField(null=True, blank=True)
@@ -194,9 +181,7 @@ class GamingDevice(Product):
 
 
 class NetworkingDevice(Product):
-    """
-    Abstract model for networking devices (routers, switches, access points).
-    """
+    """Abstract model for networking devices (routers, switches, access points)."""
     wifi_standard = models.CharField(max_length=50, blank=True)
     ports = models.JSONField(default=list, blank=True)
     max_devices = models.IntegerField(null=True, blank=True)
@@ -206,9 +191,7 @@ class NetworkingDevice(Product):
 
 
 class DigitalGadget(Product):
-    """
-    Abstract model for general digital gadgets (smartwatches, fitness trackers, etc.).
-    """
+    """Abstract model for general digital gadgets (smartwatches, fitness trackers, etc.)."""
     battery_life = models.IntegerField(null=True, blank=True)
     connectivity = models.CharField(max_length=100, blank=True)
 
