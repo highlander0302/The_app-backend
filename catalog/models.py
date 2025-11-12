@@ -24,6 +24,7 @@ Hierarchy Overview:
 """
 from typing import Any
 import time
+from random import randint
 from django.db import models
 from django.utils.text import slugify
 
@@ -105,22 +106,25 @@ class Product(models.Model):
         """Returns True if the product has stock available, False otherwise."""
         return self.stock_quantity > 0
 
+    def _slug_exists(self, slug: str) -> bool:
+        """Check if a given slug already exists in the database."""
+        return self.__class__.objects.filter(slug=slug).exists()
+
     def _generate_unique_slug(self) -> str:
         base_slug = slugify(self.name)
-        model_class = self.__class__
+        slug = base_slug
 
-        if not model_class.objects.filter(slug=base_slug).exists():
-            return base_slug
+        while self._slug_exists(slug):
+            slug = f"{base_slug}-{int(time.time())}-{randint(1, 1000)}"
 
-        timestamp_suffix = str(int(time.time()))
-        return f"{base_slug}-{timestamp_suffix}"
+        return slug
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """
         Generates a URL-friendly slug from the product name if not already set.
         (e.g., "Apple MacBook Pro" → "apple-macbook-pro").
         """
-        if not self.slug:
+        if not self.slug or self._slug_exists(self.slug):
             self.slug = self._generate_unique_slug()
         super().save(*args, **kwargs)
 
