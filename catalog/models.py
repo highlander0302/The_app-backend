@@ -129,234 +129,188 @@ class Product(models.Model):
         super().save(*args, **kwargs)
 
 
-# --- Category-level Models (abstract) ---
-class ComputingDevice(Product):
-    """Abstract model for computing devices (laptops, tablets, phones, etc.)."""
-    processor = models.CharField(max_length=255)
+# --- Domain Base Classes (abstract)---
+class Computer(Product):
+    """Abstract base class for general-purpose computing devices."""
+    cpu = models.CharField(max_length=255)
     ram = models.IntegerField(help_text="RAM in GB")
     storage = models.IntegerField(help_text="Storage in GB")
     operating_system = models.CharField(max_length=100)
-    screen_size = models.FloatField(help_text="Screen size in inches", null=True, blank=True)
 
     class Meta:
         abstract = True
 
 
-class MobileDevice(Product):
-    """Abstract model for mobile devices (smartphones, smartwatches, etc.)."""
-    operating_system = models.CharField(max_length=100)
-    battery_capacity = models.IntegerField(help_text="Battery capacity in mAh")
-    screen_size = models.FloatField(help_text="Screen size in inches")
-    connectivity = models.CharField(max_length=100, help_text="4G, 5G, Wi-Fi, Bluetooth")
+class Appliance(Product):
+    """Abstract base class for non-general-purpose devices."""
+    class Meta:
+        abstract = True
+
+
+# --- Mixins ---
+class BatteryMixin(models.Model):
+    battery_capacity = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Battery capacity in mAh"
+    )
+    battery_life = models.IntegerField(null=True, blank=True, help_text="Battery life in hours")
 
     class Meta:
         abstract = True
 
 
-class AudioDevice(Product):
-    """Abstract model for audio devices (headphones, speakers, etc.)."""
-    battery_life = models.IntegerField(help_text="Battery life in hours", null=True, blank=True)
-    connectivity = models.CharField(max_length=100, blank=True)
-    is_wireless = models.BooleanField(default=False)
+class ScreenMixin(models.Model):
+    screen_size = models.FloatField(null=True, blank=True, help_text="Screen size in inches")
+    resolution = models.CharField(max_length=50, blank=True)
+    touch_support = models.BooleanField(default=False)
 
     class Meta:
         abstract = True
 
 
-class ImagingDevice(Product):
-    """Abstract model for imaging devices (cameras, camcorders, etc.)."""
-    resolution = models.CharField(max_length=50)
-    sensor_type = models.CharField(max_length=50, null=True, blank=True)
+class ConnectivityMixin(models.Model):
+    connectivity = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="WiFi, Bluetooth, Cellular, etc."
+    )
+    gps = models.BooleanField(default=False)
+
+    class Meta:
+        abstract = True
+
+
+class KeyboardMixin(models.Model):
+    keyboard_backlight = models.BooleanField(default=False)
+
+    class Meta:
+        abstract = True
+
+
+class PortsMixin(models.Model):
+    usb_ports = models.IntegerField(null=True, blank=True)
+    ethernet_ports = models.IntegerField(null=True, blank=True)
+    hdmi_ports = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class CameraMixin(models.Model):
+    camera_megapixels = models.IntegerField(null=True, blank=True)
+    video_resolution = models.CharField(max_length=50, blank=True)
     optical_zoom = models.FloatField(null=True, blank=True)
 
     class Meta:
         abstract = True
 
 
-class GamingDevice(Product):
-    """Abstract model for gaming devices (laptops, consoles, handhelds)."""
-    gpu = models.CharField(max_length=100, blank=True)
-    storage_options = models.CharField(max_length=100, blank=True)
-    screen_size = models.FloatField(null=True, blank=True)
-    battery_life = models.IntegerField(null=True, blank=True)
-
-    class Meta:
-        abstract = True
-
-
-class NetworkingDevice(Product):
-    """Abstract model for networking devices (routers, switches, access points)."""
-    wifi_standard = models.CharField(max_length=50, blank=True)
-    ports = models.JSONField(default=list, blank=True)
-    max_devices = models.IntegerField(null=True, blank=True)
-
-    class Meta:
-        abstract = True
-
-
-class DigitalGadget(Product):
-    """Abstract model for general digital gadgets (smartwatches, fitness trackers, etc.)."""
-    battery_life = models.IntegerField(null=True, blank=True)
-    connectivity = models.CharField(max_length=100, blank=True)
+class AudioMixin(models.Model):
+    is_wireless = models.BooleanField(default=False)
+    noise_cancelling = models.BooleanField(default=False)
+    microphone = models.BooleanField(default=False)
 
     class Meta:
         abstract = True
 
 
 # --- Concrete Product Models ---
-class Laptop(ComputingDevice):
-    """Concrete model for laptops."""
-    battery_life = models.IntegerField(help_text="Battery life in hours")
-    keyboard_backlight = models.BooleanField(default=False)
+
+# Computers
+class Laptop(Computer, BatteryMixin, ScreenMixin, KeyboardMixin, ConnectivityMixin):
     touch_screen = models.BooleanField(default=False)
 
 
-class Desktop(ComputingDevice):
-    """Concrete model for desktop computers."""
+class Desktop(Computer, KeyboardMixin, PortsMixin):
     form_factor = models.CharField(max_length=50, blank=True)
     gpu_options = models.CharField(max_length=100, blank=True)
     expandable_storage = models.BooleanField(default=True)
 
 
-class Tablet(ComputingDevice):
-    """Concrete model for tablets."""
+class Tablet(Computer, BatteryMixin, ScreenMixin, ConnectivityMixin):
     stylus_support = models.BooleanField(default=False)
     cellular_connectivity = models.BooleanField(default=False)
-    battery_life = models.IntegerField(help_text="Battery life in hours", null=True, blank=True)
 
 
-class Smartphone(MobileDevice):
-    """Concrete model for smartphones."""
-    camera_megapixels = models.IntegerField()
-    dual_sim = models.BooleanField(default=False)
+# Appliances
+class Smartphone(Appliance, BatteryMixin, ScreenMixin, ConnectivityMixin, CameraMixin):
     waterproof = models.BooleanField(default=False)
+    dual_sim = models.BooleanField(default=False)
 
 
-class Smartwatch(MobileDevice):
-    """Concrete model for smartwatches."""
+class Smartwatch(Appliance, BatteryMixin, ScreenMixin, ConnectivityMixin):
     heart_rate_monitor = models.BooleanField(default=True)
     sleep_tracking = models.BooleanField(default=True)
-    gps = models.BooleanField(default=False)
 
 
-class FitnessTracker(MobileDevice):
-    """Concrete model for fitness trackers."""
+class FitnessTracker(Appliance, BatteryMixin, ScreenMixin, ConnectivityMixin):
     step_tracking = models.BooleanField(default=True)
     heart_rate_monitor = models.BooleanField(default=True)
     sleep_tracking = models.BooleanField(default=True)
 
 
-class Headphones(AudioDevice):
-    """Concrete model for headphones."""
-    noise_cancelling = models.BooleanField(default=False)
-    microphone = models.BooleanField(default=True)
+class Headphones(Appliance, BatteryMixin, AudioMixin, ConnectivityMixin):
+    pass
 
 
-class SmartSpeaker(AudioDevice):
-    """Concrete model for smart speakers."""
+class SmartSpeaker(Appliance, AudioMixin, ConnectivityMixin):
     voice_assistant = models.BooleanField(default=True)
 
 
-class DigitalCamera(ImagingDevice):
-    """Concrete model for digital cameras."""
+class DigitalCamera(Appliance, CameraMixin, BatteryMixin):
     lens_type = models.CharField(max_length=100)
-    video_resolution = models.CharField(max_length=50)
 
 
-class ActionCamera(ImagingDevice):
-    """Concrete model for action cameras."""
+class ActionCamera(Appliance, CameraMixin, BatteryMixin):
     waterproof = models.BooleanField(default=True)
     mount_compatibility = models.CharField(max_length=100)
-    video_resolution = models.CharField(max_length=50)
 
 
-class Drone(ImagingDevice):
-    """Concrete model for drones."""
+class Drone(Appliance, BatteryMixin, CameraMixin, ConnectivityMixin):
     flight_time = models.IntegerField(help_text="Flight time in minutes")
-    gps = models.BooleanField(default=True)
 
 
-class GamingConsole(GamingDevice):
-    """Concrete model for gaming consoles."""
+class GamingConsole(Appliance, BatteryMixin, ScreenMixin):
     controller_type = models.CharField(max_length=50, blank=True)
 
 
-class HandheldConsole(GamingDevice):
-    """Concrete model for handheld consoles."""
+class HandheldConsole(Appliance, BatteryMixin, ScreenMixin):
     battery_life = models.IntegerField(null=True, blank=True)
 
 
-class VRGamingSystem(GamingDevice):
-    """Concrete model for VR taming systems."""
+class VRGamingSystem(Appliance, BatteryMixin, ScreenMixin):
     tracking_sensors = models.CharField(max_length=100, blank=True)
     controllers = models.CharField(max_length=100, blank=True)
 
 
-class Router(NetworkingDevice):
-    """Concrete model for routers. """
+class Router(Appliance, ConnectivityMixin, PortsMixin):
     number_of_lan_ports = models.IntegerField(null=True, blank=True)
     number_of_wan_ports = models.IntegerField(null=True, blank=True)
-    ethernet_port_speed = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="e.g., '1 Gbps', '2.5 Gbps'",
-    )
-    band_count = models.IntegerField(
-        null=True, blank=True,
-        help_text="Number of frequency bands, e.g., 2 for dual‑band, 3 for tri‑band",
-    )
+    ethernet_port_speed = models.CharField(max_length=50, blank=True)
+    band_count = models.IntegerField(null=True, blank=True)
     supports_mu_mimo = models.BooleanField(default=False)
     usb_ports = models.IntegerField(null=True, blank=True)
 
 
-class Modem(NetworkingDevice):
-    """Concrete model for routers."""
-    modem_type = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="e.g., ADSL2+, VDSL2, DOCSIS3.1",
-        )
-    max_downstream_speed = models.CharField(max_length=50, blank=True, help_text="e.g., '1 Gbps'")
+class Modem(Appliance, ConnectivityMixin, PortsMixin):
+    modem_type = models.CharField(max_length=100, blank=True)
+    max_downstream_speed = models.CharField(max_length=50, blank=True)
     max_upstream_speed = models.CharField(max_length=50, blank=True)
 
 
-class NAS(NetworkingDevice):
-    """Concrete model for Network Attached Storage (NAS) devices."""
-    drive_bays = models.IntegerField(null=True, blank=True)
-    max_storage_capacity_tb = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Maximum supported storage in TB",
-    )
-    supported_raid_levels = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="e.g., RAID0, RAID1, RAID5",
-    )
-
-    class Meta:
-        verbose_name = "Network Attached Storage (NAS)"
-
-
-class EReader(DigitalGadget):
-    """Concrete model for EReaders."""
+class EReader(Appliance, BatteryMixin, ScreenMixin, StorageMixin):
     screen_type = models.CharField(max_length=50)
-    storage = models.IntegerField(help_text="Storage in GB")
 
 
-class Projector(DigitalGadget):
-    """Concrete model for projectors."""
-    resolution = models.CharField(max_length=50)
+class Projector(Appliance, BatteryMixin, ScreenMixin):
     brightness = models.IntegerField(help_text="Lumens")
 
 
-class WearableMedicalDevice(DigitalGadget):
-    """Concrete model for projectors."""
+class WearableMedicalDevice(Appliance, BatteryMixin, ConnectivityMixin):
     sensor_type = models.CharField(max_length=50)
-    connectivity = models.CharField(max_length=50)
 
 
-class DigitalPen(DigitalGadget):
-    """Concrete model for projectors."""
+class DigitalPen(Appliance, ConnectivityMixin):
     compatibility = models.CharField(max_length=50)
     pressure_sensitivity = models.BooleanField(default=True)
