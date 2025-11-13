@@ -61,7 +61,6 @@ local_settings.py
 docs/_build/
 
 # poetry
-poetry.lock
 poetry.toml
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
