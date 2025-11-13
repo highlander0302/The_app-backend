@@ -6,28 +6,49 @@ This module defines models for managing digital products in an e-commerce market
 Hierarchy Overview:
 -------------------
 1. Product (abstract)
-    - Contains common fields for all products such as:
-    name, SKU, price, stock, media, ratings, timestamps, and marketplace-related metadata.
+    - Provides common fields for all products such as:
+      identification, descriptions, pricing, stock, physical attributes,
+      media, ratings, and status metadata.
+    - Handles slug generation for unique URL-friendly identifiers.
 
-2. Category-level Abstract Models (abstract)
-    - ComputingDevice: Common fields for laptops, desktops, tablets (e.g., processor, RAM)
-    - MobileDevice: Common fields for smartphones, smartwatches, fitness trackers
-    - AudioDevice: Common fields for headphones, speakers
-    - ImagingDevice: Common fields for cameras and drones
-    - GamingDevice: Common fields for consoles and VR systems
-    - NetworkingDevice: Common fields for routers, modems, NAS
-    - DigitalGadget: Common fields for other gadgets like e-readers, projectors, digital pens
+2. Domain Base Classes (abstract)
+    - Computer: Represents general-purpose computing devices capable of running
+      arbitrary software and supporting multiple user applications.
+      Examples: laptops, desktops, tablets.
+    - Appliance: Represents specialized devices or gadgets designed for a dedicated
+      function rather than general-purpose computing.
+      Examples: smartwatches, fitness trackers, routers, cameras, projectors.
 
-3. Concrete Product Models
-    - Define specific products with unique fields
-    (e.g., Laptop, Smartphone, Headphones, DigitalCamera, VRGamingSystem, EReader, etc.)
+3. Mixins (abstract)
+    - BatteryMixin: Adds battery-related functionality.
+    - ScreenMixin: Adds display capabilities.
+    - ConnectivityMixin: Adds network and device connectivity features.
+    - KeyboardMixin: Adds keyboard-related features.
+    - PortsMixin: Adds physical port capabilities.
+    - CameraMixin: Adds imaging capabilities.
+    - AudioMixin: Adds audio-related functionality.
+    - (Additional mixins can be added to encapsulate other cross-cutting traits.)
+
+4. Concrete Product Models
+    - Built by combining a domain base class (Computer or Appliance) with
+      relevant mixins to represent specific products.
+    - Examples include: Laptop, Smartphone, DigitalCamera, Drone, VRGamingSystem,
+      EReader, Projector, and DigitalPen.
+
+Design Philosophy:
+-----------------
+- Uses a hybrid approach: two main domain abstractions (Computer, Appliance)
+  plus mixins for reusable traits.
+- Supports flexible composition for diverse product features.
+- Allows future extension by adding new mixins or intermediate abstract classes
+  under the two main domains without affecting existing models.
 """
 from typing import Any
 import time
 from random import randint
 from django.db import models
 from django.utils.text import slugify
-
+from django.core.validators import MinValueValidator
 
 # --- Product (abstract) ---
 class Product(models.Model):
@@ -60,16 +81,30 @@ class Product(models.Model):
     sku = models.CharField(max_length=100, unique=True, verbose_name="Stock Keeping Unit")
     upc = models.CharField(max_length=100, blank=True, verbose_name="Universal Product Code")
 
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2)
-    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    retail_price = models.DecimalField(max_digits=10, decimal_places=2)
+    cost_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator],
+    )
+    sale_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator],
+    )
+    retail_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator],
+    )
     currency = models.CharField(max_length=3, default='USD')
     stock_quantity = models.IntegerField(default=0)
     stock_threshold = models.IntegerField(default=5)
 
     weight = models.FloatField(help_text="Weight in grams (g)", null=True, blank=True)
     length = models.FloatField(help_text="Length in centemeters (cm)", null=True, blank=True)
-    width = models.FloatField(help_text="With in centemeters (cm)", null=True, blank=True)
+    width = models.FloatField(help_text="Width in centemeters (cm)", null=True, blank=True)
     height = models.FloatField(help_text="Height in centemeters (cm)", null=True, blank=True)
     origin_country = models.CharField(max_length=54, blank=True)
     shipping_required = models.BooleanField(default=True)
@@ -131,10 +166,15 @@ class Product(models.Model):
 
 # --- Domain Base Classes (abstract)---
 class Computer(Product):
-    """Abstract base class for general-purpose computing devices."""
+    """
+    Abstract base class representing general-purpose computing devices.
+
+    These devices are capable of running arbitrary software,
+    performing computations, and supporting multiple user applications.
+    Examples include laptops, desktops, and tablets.
+    """
     cpu = models.CharField(max_length=255)
     ram = models.IntegerField(help_text="RAM in GB")
-    storage = models.IntegerField(help_text="Storage in GB")
     operating_system = models.CharField(max_length=100)
 
     class Meta:
@@ -142,17 +182,24 @@ class Computer(Product):
 
 
 class Appliance(Product):
-    """Abstract base class for non-general-purpose devices."""
+    """
+    Abstract base class representing specialized digital devices or gadgets.
+
+    These devices are purpose-specific, typically running embedded software
+    to perform dedicated functions rather than general-purpose computing.
+    Examples include smartwatches, fitness trackers, routers, cameras, and projectors.
+    """
     class Meta:
         abstract = True
 
 
 # --- Mixins ---
 class BatteryMixin(models.Model):
+    """Adds battery-related functionality to a product."""
     battery_capacity = models.IntegerField(
         null=True,
         blank=True,
-        help_text="Battery capacity in mAh"
+        help_text="Battery capacity in mAh",
     )
     battery_life = models.IntegerField(null=True, blank=True, help_text="Battery life in hours")
 
@@ -161,8 +208,21 @@ class BatteryMixin(models.Model):
 
 
 class ScreenMixin(models.Model):
+    """
+    Adds display capabilities to a product.
+
+    screen_size (float): The physical diagonal size of the screen in inches.
+        This measures the actual size of the display panel.
+    resolution (str): The number of pixels on the display, usually expressed as
+        width x height (e.g., '1920x1080'). Higher resolution means more detail
+        can be shown on the screen, independent of its physical size.
+    """
     screen_size = models.FloatField(null=True, blank=True, help_text="Screen size in inches")
-    resolution = models.CharField(max_length=50, blank=True)
+    resolution = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Resolution is width x height in pixels (e.g., '1920x1080')."
+    )
     touch_support = models.BooleanField(default=False)
 
     class Meta:
@@ -170,10 +230,11 @@ class ScreenMixin(models.Model):
 
 
 class ConnectivityMixin(models.Model):
+    """Adds network and device connectivity capabilities."""
     connectivity = models.CharField(
         max_length=100,
         blank=True,
-        help_text="WiFi, Bluetooth, Cellular, etc."
+        help_text="WiFi, Bluetooth, Cellular, etc.",
     )
     gps = models.BooleanField(default=False)
 
@@ -182,6 +243,7 @@ class ConnectivityMixin(models.Model):
 
 
 class KeyboardMixin(models.Model):
+    """Adds keyboard-related features to a product."""
     keyboard_backlight = models.BooleanField(default=False)
 
     class Meta:
@@ -189,6 +251,7 @@ class KeyboardMixin(models.Model):
 
 
 class PortsMixin(models.Model):
+    """Adds physical port capabilities to a product."""
     usb_ports = models.IntegerField(null=True, blank=True)
     ethernet_ports = models.IntegerField(null=True, blank=True)
     hdmi_ports = models.IntegerField(null=True, blank=True)
@@ -198,6 +261,7 @@ class PortsMixin(models.Model):
 
 
 class CameraMixin(models.Model):
+    """Adds imaging capabilities to a product."""
     camera_megapixels = models.IntegerField(null=True, blank=True)
     video_resolution = models.CharField(max_length=50, blank=True)
     optical_zoom = models.FloatField(null=True, blank=True)
@@ -207,6 +271,7 @@ class CameraMixin(models.Model):
 
 
 class AudioMixin(models.Model):
+    """Adds audio-related functionality to a product."""
     is_wireless = models.BooleanField(default=False)
     noise_cancelling = models.BooleanField(default=False)
     microphone = models.BooleanField(default=False)
@@ -215,14 +280,26 @@ class AudioMixin(models.Model):
         abstract = True
 
 
-# --- Concrete Product Models ---
+class StorageMixin(models.Model):
+    """Adds storage capacity to a product."""
+    storage = models.IntegerField(
+        help_text="Storage capacity in GB",
+        null=True,
+        blank=True,
+    )
 
+    class Meta:
+        abstract = True
+
+
+# --- Concrete Product Models ---
 # Computers
 class Laptop(Computer, BatteryMixin, ScreenMixin, KeyboardMixin, ConnectivityMixin):
     touch_screen = models.BooleanField(default=False)
 
 
 class Desktop(Computer, KeyboardMixin, PortsMixin):
+    """Represents a stationary personal computer designed for office or home use."""
     form_factor = models.CharField(max_length=50, blank=True)
     gpu_options = models.CharField(max_length=100, blank=True)
     expandable_storage = models.BooleanField(default=True)
@@ -253,7 +330,6 @@ class FitnessTracker(Appliance, BatteryMixin, ScreenMixin, ConnectivityMixin):
 class Headphones(Appliance, BatteryMixin, AudioMixin, ConnectivityMixin):
     pass
 
-
 class SmartSpeaker(Appliance, AudioMixin, ConnectivityMixin):
     voice_assistant = models.BooleanField(default=True)
 
@@ -276,10 +352,15 @@ class GamingConsole(Appliance, BatteryMixin, ScreenMixin):
 
 
 class HandheldConsole(Appliance, BatteryMixin, ScreenMixin):
-    battery_life = models.IntegerField(null=True, blank=True)
-
+    pass
 
 class VRGamingSystem(Appliance, BatteryMixin, ScreenMixin):
+    """
+    Represents a virtual reality gaming system designed.
+
+    Includes features for motion tracking, visual display, and controller input.
+    Typically used with VR headsets and handheld controllers to interact with virtual environments.
+    """
     tracking_sensors = models.CharField(max_length=100, blank=True)
     controllers = models.CharField(max_length=100, blank=True)
 
