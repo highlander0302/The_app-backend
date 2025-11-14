@@ -5,13 +5,22 @@ This module defines models for managing digital products in an e-commerce market
 
 Hierarchy Overview:
 -------------------
-1. Product (abstract)
+1. Category
+    - Represents hierarchical grouping of products.
+    - Supports parent-child relationships (subcategories) via a self-referential foreign key.
+    - Generates URL-friendly slugs automatically from the category name.
+    - Deletion of a category with existing products is **protected** (on_delete=PROTECT).
+    - Subcategories inherit the hierarchy display in string representation.
+    
+2. Product (abstract)
     - Provides common fields for all products such as:
       identification, descriptions, pricing, stock, physical attributes,
       media, ratings, and status metadata.
     - Handles slug generation for unique URL-friendly identifiers.
-
-2. Domain Base Classes (abstract)
+    - Includes a `stock_threshold` field to notify when inventory falls below the threshold.
+    - Supports variants via self-referencing foreign key (`variant_of`) with `SET_NULL` on deletion.
+    
+3. Domain Base Classes (abstract)
     - Computer: Represents general-purpose computing devices capable of running
       arbitrary software and supporting multiple user applications.
       Examples: laptops, desktops, tablets.
@@ -19,7 +28,7 @@ Hierarchy Overview:
       function rather than general-purpose computing.
       Examples: smartwatches, fitness trackers, routers, cameras, projectors.
 
-3. Mixins (abstract)
+4. Mixins (abstract)
     - BatteryMixin: Adds battery-related functionality.
     - ScreenMixin: Adds display capabilities.
     - ConnectivityMixin: Adds network and device connectivity features.
@@ -27,21 +36,20 @@ Hierarchy Overview:
     - PortsMixin: Adds physical port capabilities.
     - CameraMixin: Adds imaging capabilities.
     - AudioMixin: Adds audio-related functionality.
+    - StorageMixin: Adds storage capacity functionality.
     - (Additional mixins can be added to encapsulate other cross-cutting traits.)
 
-4. Concrete Product Models
+5. Concrete Product Models
     - Built by combining a domain base class (Computer or Appliance) with
       relevant mixins to represent specific products.
     - Examples include: Laptop, Smartphone, DigitalCamera, Drone, VRGamingSystem,
-      EReader, Projector, and DigitalPen.
+      EReader, Projector, DigitalPen, Router, Modem, Headphones, SmartSpeaker.
 
-Design Philosophy:
------------------
-- Uses a hybrid approach: two main domain abstractions (Computer, Appliance)
-  plus mixins for reusable traits.
-- Supports flexible composition for diverse product features.
-- Allows future extension by adding new mixins or intermediate abstract classes
-  under the two main domains without affecting existing models.
+Usage Note:
+-----------
+To create a new product, extend either the `Computer` or `Appliance` abstract class, 
+and optionally include any relevant mixins (e.g., BatteryMixin, ScreenMixin, ConnectivityMixin) 
+to add specific features.
 """
 from typing import Any
 import time
@@ -50,6 +58,42 @@ from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator
 
+
+class Category(models.Model):
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=200, unique=True)
+
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='children'
+    )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Generates a URL-friendly slug from the category name.
+        (e.g., "Gaming Consoles" → "gaming-consoles").
+        """
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+        ]
+        verbose_name = 'category'
+        verbose_name_plural = 'categories'
+
+    def __str__(self) -> str:
+        if self.parent:
+            return f"{self.parent} → {self.name}"
+        return self.name
+
+
 # --- Product (abstract) ---
 class Product(models.Model):
     """
@@ -57,11 +101,11 @@ class Product(models.Model):
 
     Provides common fields for:
     - Identification: id, slug, name, SKU, UPC
-    - Descriptions: description, short_description, brand, vendor, category, subcategory, tags
+    - Descriptions: description, short_description, brand, vendor, category, tags
     - Pricing:
     cost_price, retail_price, sale_price, currency, stock_quantity, is_in_stock, stock_threshold
     - Physical attributes:
-    weight, dimensions, origin_country, shipping_required, color, size, material, variant_of
+    weight, dimensions, origin_country, shipping_required, color, product_size, material, variant_of
     - Media: image_main, images
     - Ratings & reviews: rating_average, review_count
     - Status: is_active, is_featured, approval_status, created_at, updated_at, deleted_at
@@ -75,8 +119,13 @@ class Product(models.Model):
     short_description = models.CharField(max_length=500, blank=True)
     brand = models.CharField(max_length=100)
     vendor = models.CharField(max_length=100)
-    category = models.CharField(max_length=100)
-    subcategory = models.CharField(max_length=100, blank=True)
+    category = models.ForeignKey(
+        Category,
+        null = True,
+        blank = True,
+        on_delete=models.PROTECT,
+        related_name="products",
+    )
     tags = models.JSONField(default=list, blank=True)
     sku = models.CharField(max_length=100, unique=True, verbose_name="Stock Keeping Unit")
     upc = models.CharField(max_length=100, blank=True, verbose_name="Universal Product Code")
@@ -84,32 +133,32 @@ class Product(models.Model):
     cost_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        validators=[MinValueValidator],
+        validators=[MinValueValidator(0)],
     )
     sale_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         null=True,
         blank=True,
-        validators=[MinValueValidator],
+        validators=[MinValueValidator(0)],
     )
     retail_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        validators=[MinValueValidator],
+        validators=[MinValueValidator(0)],
     )
     currency = models.CharField(max_length=3, default='USD')
     stock_quantity = models.IntegerField(default=0)
     stock_threshold = models.IntegerField(default=5)
 
     weight = models.FloatField(help_text="Weight in grams (g)", null=True, blank=True)
-    length = models.FloatField(help_text="Length in centemeters (cm)", null=True, blank=True)
-    width = models.FloatField(help_text="Width in centemeters (cm)", null=True, blank=True)
-    height = models.FloatField(help_text="Height in centemeters (cm)", null=True, blank=True)
+    length = models.FloatField(help_text="Length in centimeters (cm)", null=True, blank=True)
+    width = models.FloatField(help_text="Width in centimeters (cm)", null=True, blank=True)
+    height = models.FloatField(help_text="Height in centimeters (cm)", null=True, blank=True)
     origin_country = models.CharField(max_length=54, blank=True)
     shipping_required = models.BooleanField(default=True)
     color = models.CharField(max_length=50, blank=True)
-    size = models.CharField(
+    product_size = models.CharField(
         max_length=50,
         blank=True,
         verbose_name="screen size in inches / resolution"
@@ -371,7 +420,6 @@ class Router(Appliance, ConnectivityMixin, PortsMixin):
     ethernet_port_speed = models.CharField(max_length=50, blank=True)
     band_count = models.IntegerField(null=True, blank=True)
     supports_mu_mimo = models.BooleanField(default=False)
-    usb_ports = models.IntegerField(null=True, blank=True)
 
 
 class Modem(Appliance, ConnectivityMixin, PortsMixin):
