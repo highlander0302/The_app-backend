@@ -1,11 +1,43 @@
 from typing import Any
 import time
-from random import randint
 from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator
 
-# --- Product (abstract) ---
+
+class ProductType(models.Model):
+    """
+    Represents a type of product with a dynamic schema.
+
+    Fields:
+    - name: e.g., "Laptop", "Smartphone"
+    - base_class: "Computer" or "Appliance"
+    - fields: JSON dictionary defining the dynamic attributes and their types
+    """
+
+    name = models.CharField(max_length=100, unique=True)
+    base_class = models.CharField(
+        max_length=50,
+        choices=[('Computer', 'Computer'), ('Appliance', 'Appliance')],
+        help_text="Defines the general category of the product type"
+    )
+    fields = models.JSONField(
+        default=dict,
+        help_text="JSON schema of attributes, e.g., {'cpu': 'str', 'ram': 'int'}"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "product type"
+        verbose_name_plural = "product types"
+        ordering = ['name']
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Product(models.Model):
     """
     Abstract base model for all digital products in the marketplace.
