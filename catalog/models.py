@@ -220,8 +220,15 @@ class Product(models.Model):
         validate(instance=self.attributes, schema=self.product_type.fields)
 
     def _sync_categories(self) -> None:
-        self.category = self.product_type.category_type
-        self.subcategory = self.product_type.subcategory_type
+        """
+        Sync category/subcategory only if product_type changed or category fields are empty.
+        Prevent overwriting manual edits.
+        """
+        if not self.pk or self.category != self.product_type.category_type:
+            self.category = self.product_type.category_type
+
+        if not self.pk or self.subcategory != self.product_type.subcategory_type:
+            self.subcategory = self.product_type.subcategory_type
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """
