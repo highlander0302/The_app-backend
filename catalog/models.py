@@ -199,13 +199,26 @@ class Product(models.Model):
             queryset = queryset.exclude(pk=self.pk)
         return queryset.exists()
 
+    MAX_SLUG_LENGTH = 100
+    TIMESTAMP_LENGTH = 17
+
+    def _generate_base_slug(self, slug: str) -> str:
+        """This helper function ensures the length of base slug allows adding timestamp."""
+        allowed_length = Product.MAX_SLUG_LENGTH - Product.TIMESTAMP_LENGTH
+        if len(slug) > allowed_length:
+            truncated = slug[:allowed_length]
+            last_dash = truncated.rfind("-")
+            if last_dash != -1:
+                truncated = truncated[:last_dash]
+            return truncated
+        return slug
+
     def _generate_unique_slug(self) -> str:
-        base_slug = slugify(self.name)
-        slug = base_slug
+        slug = slugify(self.name)
+        base_slug = self._generate_base_slug(slug)
 
         while self._slug_exists(slug):
-            slug = f"{base_slug}-{int(time.time())}"
-
+            slug = f"{base_slug}-{time.time()}"
         return slug
 
     def _validate_attributes(self) -> None:
