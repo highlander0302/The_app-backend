@@ -40,8 +40,6 @@ class ProductType(models.Model):
 
     class Meta:
         ordering = ["name"]
-        verbose_name = "product type"
-        verbose_name_plural = "product types"
 
     def __str__(self) -> str:
         return self.name
@@ -49,20 +47,27 @@ class ProductType(models.Model):
 
 class Product(models.Model):
     """
-    Abstract base model for all digital products in the marketplace.
+    Concrete model. Represents a product in the marketplace.
 
-    Provides common fields for:
+    Each product belongs to a ProductType, which defines a JSON schema for
+    dynamic attributes stored in `attributes`. These attributes are validated
+    against the ProductType schema before saving.
+
+    Fields include:
     - Identification: id, slug, name, SKU, UPC
-    - Descriptions: description, short_description, brand, vendor, category, tags
-    - Pricing:
-    cost_price, retail_price, sale_price, currency, stock_quantity, is_in_stock, stock_threshold
-    - Physical attributes:
-    weight, dimensions, origin_country, shipping_required, color, product_size, material, variant_of
+    - Descriptions: brand, vendor, category, subcategory, description, short_description, tags
+    - Pricing & Stock: cost_price, retail_price, sale_price, currency, stock_quantity,
+    stock_threshold, is_in_stock
+    - Physical Attributes: weight, dimensions, origin_country, shipping_required, color,
+    product_size, material, variant_of
     - Media: image_main, images
-    - Ratings & reviews: rating_average, review_count
+    - Ratings: rating_average, review_count
     - Status: is_active, is_featured, approval_status, created_at, updated_at, deleted_at
 
-    Automatically generates a URL-friendly slug from the product name if not provided.
+    Key behaviors:
+    - Auto-generates unique slug if missing or duplicate
+    - Validates dynamic attributes against ProductType schema
+    - Syncs category and subcategory from ProductType to increase category query speed
     """
 
     id = models.BigAutoField(primary_key=True)
@@ -77,7 +82,7 @@ class Product(models.Model):
     description = models.TextField(blank=True)
     short_description = models.CharField(max_length=500, blank=True)
     brand = models.CharField(max_length=100)
-    vendor = models.CharField(max_length=100)
+    vendor = models.CharField(max_length=100, blank=True)
     tags = models.JSONField(default=list, blank=True)
     sku = models.CharField(
         max_length=100, unique=True, verbose_name="Stock Keeping Unit"
@@ -106,8 +111,8 @@ class Product(models.Model):
         validators=[MinValueValidator(0)],
     )
     currency = models.CharField(max_length=3, default="USD")
-    stock_quantity = models.IntegerField(default=0)
-    stock_threshold = models.IntegerField(default=5)
+    stock_quantity = models.IntegerField(default=0, validators=MinValueValidator(0))
+    stock_threshold = models.IntegerField(default=5, validators=MinValueValidator(0))
 
     weight = models.FloatField(help_text="Weight in grams (g)", null=True, blank=True)
     length = models.FloatField(
@@ -159,6 +164,7 @@ class Product(models.Model):
     )
 
     class Meta:
+        ordering = ["name"]
         indexes = [
             models.Index(fields=["category"]),
             models.Index(fields=["category", "subcategory"]),
@@ -171,8 +177,14 @@ class Product(models.Model):
         return self.stock_quantity > 0
 
     def _slug_exists(self, slug: str) -> bool:
-        """Check if a given slug already exists in the database."""
-        return self.__class__.objects.filter(slug=slug).exists()
+        """
+        Return True if the candidate_slug exists on another instance.
+        Excludes this instance (by pk).
+        """
+        queryset = self.__class__.objects.filter(slug=slug)
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+        return queryset.exists()
 
     def _generate_unique_slug(self) -> str:
         base_slug = slugify(self.name)
