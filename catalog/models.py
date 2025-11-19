@@ -7,7 +7,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils.text import slugify
 from jsonschema import ValidationError as JSONSchemaValidationError
-from jsonschema import validate
+from jsonschema import validate, Draft7Validator, SchemaError
 
 
 class ProductType(models.Model):
@@ -40,6 +40,19 @@ class ProductType(models.Model):
 
     class Meta:
         ordering = ["name"]
+
+    def _validate_schema(self) -> None:
+        """
+        Validates that `fields` conform to Draft 7 JSON schema type.
+        """
+        try:
+            Draft7Validator.check_schema(self.fields)
+        except SchemaError as e:
+            raise DjangoValidationError({"fields": f"Invalid JSON Schema: {e.message}"})
+
+    def save(self, *args, **kwargs):
+        self._validate_schema()
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.name
