@@ -179,7 +179,6 @@ class Product(models.Model):
     class Meta:
         ordering = ["name"]
         indexes = [
-            models.Index(fields=["category"]),
             models.Index(fields=["category", "subcategory"]),
             GinIndex(fields=["attributes"]),
         ]
@@ -242,6 +241,20 @@ class Product(models.Model):
 
         if not self.pk or self.subcategory != self.product_type.subcategory_type:
             self.subcategory = self.product_type.subcategory_type
+
+    def clean(self):
+        """
+        Custom model validation.
+        - Prevents a product from being a variant of itself.
+        - Ensures variant products have the same ProductType as the parent.
+        """
+        if self.variant_of and self.variant_of_id == self.id:
+            raise DjangoValidationError({"variant_of": "A product cannot be a variant of itself."})
+
+        if self.variant_of and self.variant_of.product_type != self.product_type:
+            raise DjangoValidationError({
+                "variant_of": "A variant must have the same product type as its parent."
+            })
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """
