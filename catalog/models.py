@@ -1,9 +1,9 @@
-import time
+import uuid
 from typing import Any
 
 from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 from django.utils.text import slugify
 from jsonschema import ValidationError as JSONSchemaValidationError
@@ -16,9 +16,8 @@ class ProductType(models.Model):
 
     Fields:
     - name: e.g., "Laptop", "Smartphone"
-    - category: Top-level category of the product type (e.g. laptop)
-    - subcategory: Optional subcategory (e.g. gaming laptop)
-    - fields: JSON dictionary defining the dynamic attributes and their types
+    - category_type / subcategory_type
+    - fields: JSON Schema (Draft 7) defining dynamic attributes and their types
     """
 
     name = models.CharField(max_length=100, unique=True)
@@ -32,7 +31,18 @@ class ProductType(models.Model):
     )
     fields = models.JSONField(
         default=dict,
-        help_text="JSON schema of attributes, e.g., {'cpu': 'str', 'ram': 'int'}",
+        help_text="""
+            JSON Schema of product attributes (Draft 7). 
+            Example:
+            {
+                "type": "object",
+                "properties": {
+                    "cpu": {"type": "string"},
+                    "ram": {"type": "integer"}
+                },
+                "required": ["cpu", "ram"]
+            }
+            """,
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -48,9 +58,12 @@ class ProductType(models.Model):
         try:
             Draft7Validator.check_schema(self.fields)
         except SchemaError as e:
-            raise DjangoValidationError({"fields": f"Invalid JSON Schema: {e.message}"})
+            raise DjangoValidationError(
+                {"fields": f"Invalid JSON Schema: {str(e)}"}
+            ) from e
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Validates schema and saves."""
         self._validate_schema()
         super().save(*args, **kwargs)
 
@@ -75,7 +88,7 @@ class Product(models.Model):
     product_size, material, variant_of
     - Media: image_main, images
     - Ratings: rating_average, review_count
-    - Status: is_active, is_featured, approval_status, created_at, updated_at, deleted_at
+    - Status: is_active, is_featured, approval_status, created_at, updated_at
 
     Key behaviors:
     - Auto-generates unique slug if missing or duplicate
@@ -86,12 +99,12 @@ class Product(models.Model):
     id = models.BigAutoField(primary_key=True)
     slug = models.SlugField(unique=True, blank=True, max_length=100)
     name = models.CharField(max_length=255)
-    category = models.CharField(
-        max_length=100, help_text="Top-level category of the product type"
+
+    _category = models.CharField(max_length=100, db_index=True, editable=False)
+    _subcategory = models.CharField(
+        max_length=100, blank=True, db_index=True, editable=False
     )
-    subcategory = models.CharField(
-        max_length=100, blank=True, help_text="Optional subcategory"
-    )
+
     description = models.TextField(blank=True)
     short_description = models.CharField(max_length=500, blank=True)
     brand = models.CharField(max_length=100)
@@ -123,7 +136,13 @@ class Product(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(0)],
     )
-    currency = models.CharField(max_length=3, default="USD")
+    currency = models.CharField(
+        max_length=3,
+        default="USD",
+        validators=[
+            RegexValidator(r"^[A-Z]{3}$", "Currency must be a 3-letter uppercase code.")
+        ],
+    )
     stock_quantity = models.IntegerField(default=0, validators=MinValueValidator(0))
     stock_threshold = models.IntegerField(default=5, validators=MinValueValidator(0))
 
@@ -164,7 +183,6 @@ class Product(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
 
     attributes = models.JSONField(
         default=dict,
@@ -179,7 +197,7 @@ class Product(models.Model):
     class Meta:
         ordering = ["name"]
         indexes = [
-            models.Index(fields=["category", "subcategory"]),
+            models.Index(fields=["_category", "_subcategory"]),
             GinIndex(fields=["attributes"]),
         ]
 
@@ -188,10 +206,20 @@ class Product(models.Model):
         """Returns True if the product has stock available, False otherwise."""
         return self.stock_quantity > 0
 
+    @property
+    def category(self) -> str:
+        """Ensures _cateegory is read-only."""
+        return self._category
+
+    @property
+    def subcategory(self) -> str:
+        """Ensures _subcateegory is read-only."""
+        return self._subcategory
+
     def _slug_exists(self, slug: str) -> bool:
         """
-        Return True if the candidate_slug exists on another instance.
-        Excludes this instance (by pk).
+        Return True if the slug exists on another instance.
+        Excludes current instance (by pk).
         """
         queryset = self.__class__.objects.filter(slug=slug)
         if self.pk:
@@ -199,11 +227,18 @@ class Product(models.Model):
         return queryset.exists()
 
     MAX_SLUG_LENGTH = 100
-    TIMESTAMP_LENGTH = 17
+    UUID_SUFFIX_LENGTH = 8
+    SUFFIX_LENGTH = UUID_SUFFIX_LENGTH + 1
 
-    def _generate_base_slug(self, slug: str) -> str:
-        """This helper function ensures the length of base slug allows adding timestamp."""
-        allowed_length = Product.MAX_SLUG_LENGTH - Product.TIMESTAMP_LENGTH
+    def _ensure_base_slug_len(self, slug: str) -> str:
+        """
+        Ensure the base portion of the slug fits within MAX_SLUG_LENGTH
+        once a UUID suffix (and hyphen) is appended. The slug is truncated, if too long.
+
+        Returns:
+            A base slug short enough to safely append "-<uuid>".
+        """
+        allowed_length = Product.MAX_SLUG_LENGTH - Product.SUFFIX_LENGTH
         if len(slug) > allowed_length:
             truncated = slug[:allowed_length]
             last_dash = truncated.rfind("-")
@@ -213,11 +248,23 @@ class Product(models.Model):
         return slug
 
     def _generate_unique_slug(self) -> str:
-        slug = slugify(self.name)
-        base_slug = self._generate_base_slug(slug)
+        """
+        Generate a unique slug for the product.
+
+        - slugifies the product name (fallback: "Product")
+        - trims the base slug so there is room for a UUID suffix
+        - appends an 8-character UUID hex suffix on collision
+        - regenerates suffixes until unused
+
+        Returns:
+            A unique slug string.
+        """
+        slug = slugify(self.name) or "Product"
+        base_slug = self._ensure_base_slug_len(slug)
 
         while self._slug_exists(slug):
-            slug = f"{base_slug}-{time.time()}"
+            uuid_suffix = uuid.uuid4().hex[: Product.UUID_SUFFIX_LENGTH]
+            slug = f"{base_slug}-{uuid_suffix}"
         return slug
 
     def _validate_attributes(self) -> None:
@@ -237,43 +284,61 @@ class Product(models.Model):
         Prevent overwriting manual edits.
         """
         if not self.pk or self.category != self.product_type.category_type:
-            self.category = self.product_type.category_type
+            self._category = self.product_type.category_type
 
         if not self.pk or self.subcategory != self.product_type.subcategory_type:
-            self.subcategory = self.product_type.subcategory_type
+            self._subcategory = self.product_type.subcategory_type
 
-    def clean(self):
+    def clean(self) -> None:
         """
         Custom model validation.
-        - Prevents a product from being a variant of itself.
+        - Validates `attributes` against `product_type.fields` JSON Schema.
+        - Raises `DjangoValidationError` if attributes are invalid.
+        - Prevents a product from being a variant of itself or circular variant chains.
         - Ensures variant products have the same ProductType as the parent.
         """
+        parent = self.variant_of
+        seen = set()
+        while parent:
+            if parent.id == self.id or parent.id in seen:
+                raise DjangoValidationError(
+                    {"variant_of": "Circular variant relationship detected."}
+                )
+            seen.add(parent.id)
+            parent = parent.variant_of
+
+        try:
+            self._validate_attributes()
+        except JSONSchemaValidationError as e:
+            raise DjangoValidationError({"attributes": str(e)}) from e
+
         if self.variant_of and self.variant_of_id == self.id:
-            raise DjangoValidationError({"variant_of": "A product cannot be a variant of itself."})
+            raise DjangoValidationError(
+                {"variant_of": "A product cannot be a variant of itself."}
+            )
 
         if self.variant_of and self.variant_of.product_type != self.product_type:
-            raise DjangoValidationError({
-                "variant_of": "A variant must have the same product type as its parent."
-            })
+            raise DjangoValidationError(
+                {
+                    "variant_of": "A variant must have the same product type as its parent."
+                }
+            )
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """
         Save the Product instance.
 
         - Generates a unique slug if missing or duplicate.
-        - Validates `attributes` against `product_type.fields` JSON Schema.
-        - Raises `DjangoValidationError` if attributes are invalid.
         - Syncs Product category/subcategory fields with ProductType category/subcategory.
+        - Calls full_clean.
         - Saves the object to the database.
         """
+
         if not self.slug or self._slug_exists(self.slug):
             self.slug = self._generate_unique_slug()
 
-        try:
-            self._validate_attributes()
-        except JSONSchemaValidationError as e:
-            raise DjangoValidationError({"attributes": e.message}) from e
-
         self._sync_categories()
+
+        self.full_clean()
 
         super().save(*args, **kwargs)
