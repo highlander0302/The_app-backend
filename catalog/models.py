@@ -22,7 +22,7 @@ class ProductType(models.Model):
 
     name = models.CharField(max_length=100, unique=True)
     category_type = models.CharField(
-        max_length=100, help_text="Top-level category of the product type"
+        max_length=100, unique=True, help_text="Top-level category of the product type"
     )
     subcategory_type = models.CharField(
         max_length=100,
@@ -62,10 +62,16 @@ class ProductType(models.Model):
                 {"fields": f"Invalid JSON Schema: {str(e)}"}
             ) from e
 
-    def save(self, *args: Any, **kwargs: Any) -> None:
-        """Validates schema and saves."""
+    def clean(self, *args: Any, **kwargs: Any) -> None:
         self._validate_schema()
+        super().clean(*args, **kwargs)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        self.full_clean()
         super().save(*args, **kwargs)
+
+    def __repr__(self):
+        return f"<ProductType id={self.id!r} name={self.name!r}>"
 
     def __str__(self) -> str:
         return self.name
