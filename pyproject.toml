@@ -20,7 +20,8 @@ dependencies = [
     "django-extensions (>=4.1,<5.0)",
     "elasticsearch (>=9.2.0,<10.0.0)",
     "pillow (>=12.0.0,<13.0.0)",
-    "django-versatileimagefield (>=3.1,<4.0)"
+    "django-versatileimagefield (>=3.1,<4.0)",
+    "jsonschema (>=4.25.1,<5.0.0)"
 ]
 
 
