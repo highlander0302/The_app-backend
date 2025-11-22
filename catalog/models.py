@@ -6,15 +6,15 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 from django.utils.text import slugify
+from jsonschema import Draft7Validator, SchemaError
 from jsonschema import ValidationError as JSONSchemaValidationError
-from jsonschema import validate, Draft7Validator, SchemaError
 
 
 class ProductType(models.Model):
     """
     Represents a type of product with a dynamic attributes schema.
 
-    Schema:
+    Fields:
     - name: e.g., "Laptop", "Smartphone"
     - category_type / subcategory_type
     - attributes_schema: JSON Schema (Draft 7) defining dynamic attributes and their types
@@ -61,6 +61,12 @@ class ProductType(models.Model):
             raise DjangoValidationError(
                 {"attributes_schema": f"Invalid JSON Schema: {str(e)}"}
             ) from e
+
+        schema_type = self.attributes_schema.get("type")
+        if schema_type and schema_type != "object":
+            raise DjangoValidationError(
+                {"attributes_schema": "Top-level type must be 'object'."}
+            )
 
     def clean(self, *args: Any, **kwargs: Any) -> None:
         self._validate_schema()
@@ -111,7 +117,7 @@ class Product(models.Model):
     slug = models.SlugField(unique=True, blank=True, max_length=100)
     name = models.CharField(max_length=255)
 
-    _category = models.CharField(max_length=100, editable=False)
+    _category = models.CharField(max_length=100, blank=True, editable=False)
     _subcategory = models.CharField(max_length=100, blank=True, editable=False)
 
     description = models.TextField(blank=True)
@@ -265,7 +271,8 @@ class Product(models.Model):
                 if last_dash_in_allowed_len != -1
                 else slug[:allowed_len]
             )
-            return truncated
+            truncated = truncated.strip("-")
+            return truncated if truncated else "product"
         return slug
 
     def _generate_unique_slug(self) -> str:
@@ -297,7 +304,8 @@ class Product(models.Model):
         Raises:
             jsonschema.ValidationError: if attributes are invalid
         """
-        validate(instance=self.attributes, schema=self.product_type.attributes_schema)
+        validator = Draft7Validator(self.product_type.attributes_schema)
+        validator.validate(instance=self.attributes)
 
     def _sync_categories(self) -> None:
         """
@@ -332,11 +340,11 @@ class Product(models.Model):
         - A variant must have the same product type as its parent.
         """
         if self.variant_of:
-            if self.variant_of_id == self.id:
+            if self.variant_of_id and self.pk and self.variant_of_id == self.pk:
                 raise DjangoValidationError(
                     {"variant_of": "A product cannot be a variant of itself."}
                 )
-            if self.variant_of.product_type != self.product_type:
+            if self.variant_of.product_type_id != self.product_type_id:
                 raise DjangoValidationError(
                     {
                         "variant_of": "A variant must have the same product type as its parent."
