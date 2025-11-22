@@ -1,3 +1,33 @@
+"""
+Product and ProductType models for the marketplace.
+
+This module defines:
+
+1. ProductType
+    - Represents a type of product with a dynamic JSON schema for attributes.
+    - Fields:
+        - name, category_type, subcategory_type
+        - attributes_schema (Draft 7 JSON Schema)
+    - Validates that the schema conforms to Draft 7 and is an object.
+
+2. Product
+    - Represents a concrete product instance.
+    - Fields include identification, descriptions, pricing, stock, physical attributes,
+    media, ratings, status, and dynamic attributes.
+    - Key behaviors:
+        - Auto-generates unique slug, handles collisions with UUID suffix
+        - Validates dynamic attributes against ProductType schema
+        - Syncs category and subcategory fields from ProductType
+        - Ensures variant integrity and prevents circular variant chains
+        - Tracks stock availability, ratings, and approval status
+
+Notes:
+- Slugs are truncated and suffixed with a UUID to ensure uniqueness.
+- Attributes are validated using Draft 7 JSON Schema via jsonschema.Draft7Validator.
+- Variant products must share the same ProductType as their parent.
+- GIN indexes are applied to the attributes field for efficient JSON queries.
+"""
+
 import uuid
 from typing import Any
 
@@ -53,7 +83,8 @@ class ProductType(models.Model):
 
     def _validate_schema(self) -> None:
         """
-        Validates that `attributes_schema` conform to Draft 7 JSON schema type.
+        Validates that `attributes_schema` conforms to Draft 7 and is an object schema.
+        Raises DjangoValidationError if invalid.
         """
         try:
             Draft7Validator.check_schema(self.attributes_schema)
@@ -69,10 +100,16 @@ class ProductType(models.Model):
             )
 
     def clean(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Validates the schema before full_clean.
+        """
         self._validate_schema()
         super().clean(*args, **kwargs)
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Runs full_clean and saves the ProductType instance.
+        """
         self.full_clean()
         super().save(*args, **kwargs)
 
@@ -85,30 +122,22 @@ class ProductType(models.Model):
 
 class Product(models.Model):
     """
-    Concrete model. Represents a product in the marketplace.
+    Represents a concrete product in the marketplace.
 
     Each product belongs to a ProductType, which defines a JSON schema for
-    dynamic attributes stored in `attributes`. These attributes are validated
-    against the ProductType attributes_schema before saving.
-
-    Fields include:
-    - Identification: id, slug, name, SKU, UPC
-    - Descriptions: brand, vendor, category, subcategory, description, short_description, tags
-    - Pricing & Stock: cost_price, retail_price, sale_price, currency, stock_quantity,
-    stock_threshold, is_in_stock
-    - Physical Attributes: weight, dimensions, origin_country, shipping_required, color,
-    product_size, material, variant_of
-    - Media: image_main, images
-    - Ratings: rating_average, review_count
-    - Status: is_active, is_featured, approval_status, created_at, updated_at
+    dynamic attributes. Attributes are validated against ProductType.attributes_schema.
 
     Key behaviors:
     - Auto-generates unique slug if missing or duplicate
-    - Validates dynamic attributes against ProductType attributes_schema
-    - Syncs category and subcategory from ProductType to increase category query speed
+    - Validates dynamic attributes
+    - Syncs category and subcategory from ProductType
     """
 
     class ApprovalStatus(models.TextChoices):
+        """
+        Defines the possible approval statuses for Product's field `approval_status`.
+        """
+
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
@@ -251,6 +280,15 @@ class Product(models.Model):
         return queryset.exists()
 
     class SlugConfig:
+        """
+        Configuration constants for generating unique product slugs.
+
+        Attributes:
+        - MAX_LENGTH: Maximum total length of the slug, including suffix.
+        - UUID_SUFFIX_LENGTH: length of the UUID suffix.
+        - SUFFIX_LENGTH: length of the suffix including the hyphen.
+        """
+
         MAX_LENGTH = 100
         UUID_SUFFIX_LENGTH = 8
         SUFFIX_LENGTH = UUID_SUFFIX_LENGTH + 1
@@ -258,7 +296,8 @@ class Product(models.Model):
     def _ensure_base_slug_len(self, slug: str) -> str:
         """
         Ensure the base portion of the slug fits within MAX_SLUG_LENGTH
-        once a UUID suffix (and hyphen) is appended. The slug is truncated, if too long.
+        once a UUID suffix (and hyphen) is appended. Truncates if necessary, strips hyphens,
+        and falls back to 'product' if empty.
 
         Returns:
             A base slug short enough to safely append "-<uuid>".
@@ -281,7 +320,7 @@ class Product(models.Model):
 
         - slugifies the product name (fallback: "Product")
         - trims the base slug so there is room for a UUID suffix
-        - appends an 8-character UUID hex suffix on collision
+        - appends an UUID hex suffix on collision
         - regenerates suffixes until unused
 
         Returns:
@@ -296,21 +335,13 @@ class Product(models.Model):
         return slug
 
     def _validate_attributes(self) -> None:
-        """
-        Validates self.attributes against the `attributes_schema` from ProductType.
-
-        Returns:
-            None if valid.
-        Raises:
-            jsonschema.ValidationError: if attributes are invalid
-        """
         validator = Draft7Validator(self.product_type.attributes_schema)
         validator.validate(instance=self.attributes)
 
     def _sync_categories(self) -> None:
         """
-        Sync category/subcategory only if product_type changed or category fields are empty.
-        Prevents overwriting manual edits.
+        Syncs _category and _subcategory fields with ProductType.
+        Only updates if product_type changed or fields are empty.
         """
         if not self.pk or self.category != self.product_type.category_type:
             self._category = self.product_type.category_type
@@ -320,7 +351,7 @@ class Product(models.Model):
 
     def _validate_variant_chain(self) -> None:
         """
-        Ensure that there are no circular variant relationships.
+        Ensures no circular variant relationships.
         Raises DjangoValidationError if a circular chain is detected.
         """
         parent = self.variant_of
@@ -335,9 +366,10 @@ class Product(models.Model):
 
     def _validate_variant_integrity(self) -> None:
         """
-        Ensure the variant relationship is valid:
+        Ensures variant integrity:
         - A product cannot be a variant of itself.
-        - A variant must have the same product type as its parent.
+        - A variant must have the same ProductType as its parent.
+        Raises DjangoValidationError if invalid.
         """
         if self.variant_of:
             if self.variant_of_id and self.pk and self.variant_of_id == self.pk:
@@ -375,8 +407,7 @@ class Product(models.Model):
 
         - Generates a unique slug if missing or duplicate.
         - Syncs Product category/subcategory fields with ProductType category/subcategory.
-        - Calls full_clean.
-        - Saves the object to the database.
+        - Calls full_clean() and saves the object.
         """
 
         if not self.slug or self._slug_exists(self.slug):
