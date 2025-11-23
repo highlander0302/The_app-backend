@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass
 from typing import Any
 
 from django.contrib.postgres.indexes import GinIndex
@@ -12,108 +10,9 @@ from django.utils.text import slugify
 from jsonschema import Draft7Validator, SchemaError
 from jsonschema import ValidationError as JSONSchemaValidationError
 
-
-@dataclass(frozen=True)
-class SlugConfig:
-    max_length: int = 100
-    uuid_suffix_length: int = 8
-
-    @property
-    def suffix_length(self) -> int:
-        return self.uuid_suffix_length + 1
-
-
-class SlugService:
-    @staticmethod
-    def ensure_base_slug_len(base: str, cfg: SlugConfig) -> str:
-        allowed_len = cfg.max_length - cfg.suffix_length
-        if len(base) > allowed_len:
-            last_dash = base[:allowed_len].rfind("-")
-            truncated = (
-                base[:last_dash] if last_dash != -1 else base[:allowed_len]
-            )
-            truncated = truncated.strip("-")
-            return truncated or "product"
-        return base
-
-    @staticmethod
-    def suffix_base_slug(base: str, cfg: SlugConfig) -> str:
-        uuid_suffix = uuid.uuid4().hex[: cfg.uuid_suffix_length]
-        return f"{base}-{uuid_suffix}"
-
-
-class SchemaValidator:
-    """This will be a class for schema validation."""
-
-    @staticmethod
-    def get_validator_for_schema(schema: dict) -> Draft7Validator:
-        Draft7Validator.check_schema(schema)
-        return Draft7Validator(schema)
-
-    @staticmethod
-    def validate_schema(schema: dict) -> None:
-        """
-        Validate the JSON schema for correctness + enforce ProductType rules.
-        """
-        try:
-            Draft7Validator.check_schema(schema)
-        except SchemaError as e:
-            raise DjangoValidationError({"attributes_schema": str(e)}) from e
-
-        schema_type = schema.get("type")
-        if schema_type and schema_type != "object":
-            raise DjangoValidationError(
-                {"attributes_schema": "Top-level type must be 'object'."}
-            )
-
-    @staticmethod
-    def validate_attributes(schema: dict, attributes: Any) -> None:
-        """
-        Validate an attributes instance against a schema.
-        """
-        SchemaValidator.validate_schema(schema)
-
-        validator = SchemaValidator.get_validator_for_schema(schema)
-        validator.validate(instance=attributes)
-
-
-class VariantValidator:
-    @staticmethod
-    def validate_chain(product_instance: "Product") -> None:
-        parent = product_instance.variant_of
-        seen = set()
-
-        while parent:
-            parent_key = parent.pk or id(parent)
-            product_key = product_instance.pk or id(product_instance)
-
-            if parent_key == product_key or parent_key in seen:
-                raise DjangoValidationError(
-                    {"variant_of": "Circular variant relationship detected."}
-                )
-
-            seen.add(parent_key)
-            parent = parent.variant_of
-
-    @staticmethod
-    def validate_integrity(product_instance: "Product") -> None:
-        parent = product_instance.variant_of
-        if not parent:
-            return
-
-        if (
-            product_instance.pk
-            and parent.pk
-            and product_instance.pk == parent.pk
-        ):
-            raise DjangoValidationError(
-                {"variant_of": "A product cannot be a variant of itself."}
-            )
-
-        if parent.product_type_id != product_instance.product_type_id:
-            raise DjangoValidationError(
-                {"variant_of": "A variant must have the same product type as its parent."}
-            )
+from catalog.services.slug_service import SlugService, SlugConfig
+from catalog.services.validators.schema import SchemaValidator
+from catalog.services.validators.variant import VariantValidator
 
 
 class ProductType(models.Model):
