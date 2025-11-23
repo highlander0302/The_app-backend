@@ -50,20 +50,29 @@ class SchemaValidator:
         Draft7Validator.check_schema(schema)
         return Draft7Validator(schema)
 
-    def validate_schema(self, schema: dict) -> None:
-        pass
-
-
-class AttributesValidator:
     @staticmethod
     def validate_schema(schema: dict) -> None:
+        """
+        Validate the JSON schema for correctness + enforce ProductType rules.
+        """
         try:
             Draft7Validator.check_schema(schema)
         except SchemaError as e:
             raise DjangoValidationError({"attributes_schema": str(e)}) from e
 
+        schema_type = schema.get("type")
+        if schema_type and schema_type != "object":
+            raise DjangoValidationError(
+                {"attributes_schema": "Top-level type must be 'object'."}
+            )
+
     @staticmethod
     def validate_attributes(schema: dict, attributes: Any) -> None:
+        """
+        Validate an attributes instance against a schema.
+        """
+        SchemaValidator.validate_schema(schema)
+
         validator = SchemaValidator.get_validator_for_schema(schema)
         validator.validate(instance=attributes)
 
@@ -119,20 +128,8 @@ class ProductType(models.Model):
     class Meta:
         ordering = ["name"]
 
-    def _validate_schema(self) -> None:  # TODO: delegate to validator and DI
-        try:
-            Draft7Validator.check_schema(self.attributes_schema)
-        except SchemaError as e:
-            raise DjangoValidationError({"attributes_schema": str(e)}) from e
-
-        schema_type = self.attributes_schema.get("type")
-        if schema_type and schema_type != "object":
-            raise DjangoValidationError(
-                {"attributes_schema": "Top-level type must be 'object'."}
-            )
-
     def clean(self, *args: Any, **kwargs: Any) -> None:
-        self._validate_schema()
+        SchemaValidator.validate_schema(self.attributes_schema)
         super().clean(*args, **kwargs)
 
     def save(self, *args: Any, **kwargs: Any) -> None:
@@ -264,7 +261,7 @@ class Product(models.Model):
         VariantValidator.validate_integrity(self)
 
         try:
-            AttributesValidator.validate_attributes(
+            SchemaValidator.validate_attributes(
                 self.product_type.attributes_schema,
                 self.attributes
             )
