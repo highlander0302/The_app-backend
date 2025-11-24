@@ -8,7 +8,7 @@ from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 from jsonschema import ValidationError as JSONSchemaValidationError
 
-from catalog.services.slug_service import SlugService, SlugConfig
+from catalog.services.slug_service import SlugConfig, SlugService
 from catalog.services.validators.schema import SchemaValidator
 from catalog.services.validators.variant import VariantValidator
 
@@ -115,9 +115,7 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     attributes = models.JSONField(default=dict)
-    product_type = models.ForeignKey(
-        ProductType, on_delete=models.PROTECT, related_name="products"
-    )
+    product_type = models.ForeignKey(ProductType, on_delete=models.PROTECT, related_name="products")
 
     class Meta:
         ordering = ["name"]
@@ -127,8 +125,8 @@ class Product(models.Model):
             GinIndex(fields=["attributes"]),
         ]
 
-    SLUG_SERVICE = SlugService
     SLUG_CONFIG = SlugConfig()
+    SLUG_SERVICE = SlugService(SLUG_CONFIG)
     SCHEMA_VALIDATOR = SchemaValidator
     VARIANT_VALIDATOR = VariantValidator
 
@@ -143,17 +141,6 @@ class Product(models.Model):
     @property
     def subcategory(self) -> str:
         return self._subcategory
-
-    def _generate_unique_slug(self) -> str:
-        """
-        Delegates uniqueness logic to the SlugService.
-        """
-        return self.SLUG_SERVICE.generate_unique_slug(
-            model_class=type(self),
-            name=self.name,
-            cfg=self.SLUG_CONFIG,
-            exclude_pk=self.pk,
-        )
 
     def _sync_categories(self) -> None:
         if not self.pk or self.category != self.product_type.category_type:
@@ -183,7 +170,6 @@ class Product(models.Model):
             self.slug = self.SLUG_SERVICE.generate_unique_slug(
                 model_class=type(self),
                 name=self.name,
-                cfg=self.SLUG_CONFIG,
                 exclude_pk=self.pk,
             )
         self._sync_categories()

@@ -1,6 +1,23 @@
+"""
+Slug generation service for products.
+
+This module provides a configurable service to generate unique, URL-friendly
+slugs for products.
+
+It handles:
+- Creating a base slug from a string (e.g., product name) using `slugify`.
+- Ensuring the base slug fits within a maximum length.
+- Generating unique suffixed slugs using a UUID when needed.
+- Checking the database to avoid collisions with existing slugs.
+
+Classes:
+    SlugConfig: Configuration for slug generation (max length, UUID suffix length).
+    SlugService: Service for generating and validating unique slugs.
+"""
+
 import uuid
 from dataclasses import dataclass
-from typing import Generator, Optional
+from typing import Generator
 
 from django.db import models
 from django.utils.text import slugify
@@ -8,70 +25,97 @@ from django.utils.text import slugify
 
 @dataclass(frozen=True)
 class SlugConfig:
+    """Configuration for slug generation."""
+
     max_length: int = 100
     uuid_suffix_length: int = 8
 
     @property
     def suffix_length(self) -> int:
+        """Total length added by the suffix, including the dash."""
         return self.uuid_suffix_length + 1
 
 
 class SlugService:
-    @staticmethod
-    def ensure_base_slug_len(base: str, cfg: SlugConfig) -> str:
-        allowed_len = cfg.max_length - cfg.suffix_length
-        if len(base) > allowed_len:
-            last_dash = base[:allowed_len].rfind("-")
-            truncated = base[:last_dash] if last_dash != -1 else base[:allowed_len]
-            truncated = truncated.strip("-")
-            return truncated or "product"
-        return base
+    """
+    Service for generating unique, URL-friendly slugs for products.
 
-    @staticmethod
-    def suffix_base_slug(base: str, cfg: SlugConfig) -> str:
-        uuid_suffix = uuid.uuid4().hex[: cfg.uuid_suffix_length]
-        return f"{base}-{uuid_suffix}"
+    This service handles:
+    - Creating a base slug from a string (product name).
+    - Truncating the base slug to fit max length.
+    - Generating suffixed slugs with UUID to ensure uniqueness.
+    - Checking the database to avoid collisions with existing slugs.
 
-    @staticmethod
-    def make_base(name: str) -> str:
-        return slugify(name) or "product"
+    Attributes:
+        _config (SlugConfig): Configuration for slug generation, including max length
+            and UUID suffix length.
 
-    @classmethod
-    def generate_candidates(cls, name: str, cfg: SlugConfig) -> Generator[str, None, None]:
-        """
-        Yield base slug first, then unlimited suffixed candidates.
-        """
-        base = cls.ensure_base_slug_len(cls.make_base(name), cfg)
-        yield base
-        while True:
-            yield cls.suffix_base_slug(base, cfg)
+    Methods:
+        generate_unique_slug(model_class, name, exclude_pk):
+            Returns a unique slug for the given model class.
+        slug_exists(model_class, slug, exclude_pk):
+            Checks if a slug already exists in the database, excluding a given PK
+                (if object already exists).
+    """
 
-    @staticmethod
-    def slug_exists(
-        model_class: type[models.Model], slug: str, exclude_pk: Optional[int] = None
-    ) -> bool:
-        """
-        DB-level existence check for the given model class.
-        `exclude_pk` follows the same semantics as your previous method.
-        """
-        qs = model_class.objects.filter(slug=slug)
-        if exclude_pk is not None:
-            qs = qs.exclude(pk=exclude_pk)
-        return qs.exists()
+    def __init__(self, config: SlugConfig) -> None:
+        self._config = config
 
-    @classmethod
     def generate_unique_slug(
-        cls,
+        self,
         model_class: type[models.Model],
         name: str,
-        cfg: SlugConfig,
-        exclude_pk: Optional[int] = None,
+        exclude_pk: int | None = None,
     ) -> str:
         """
         Return the first candidate slug that does not exist in DB for `model_class`.
-        No max attempts — infinite generator is acceptable for your context.
         """
-        for candidate in cls.generate_candidates(name, cfg):
-            if not cls.slug_exists(model_class, candidate, exclude_pk=exclude_pk):
+        for candidate in self._generate_candidate_slugs(name):
+            if not self.slug_exists(model_class, candidate, exclude_pk=exclude_pk):
                 return candidate
         raise RuntimeError("Failed to generate unique slug")
+
+    @staticmethod
+    def slug_exists(
+        model_class: type[models.Model], slug: str, exclude_pk: int | None = None
+    ) -> bool:
+        """
+        DB-level existence check for the given model class.
+        `exclude_pk` excludes current instance id from queryset, otherwise will find own slug in DB.
+        """
+        queryset = model_class.objects.filter(slug=slug)
+        if exclude_pk is not None:
+            queryset = queryset.exclude(pk=exclude_pk)
+        return queryset.exists()
+
+    def _generate_candidate_slugs(self, name: str) -> Generator[str, None, None]:
+        """
+        Yield base slug first, then unlimited suffixed candidates.
+        """
+        base = self._ensure_base_slug_len(self._make_base(name))
+        yield base
+        while True:
+            yield self._suffix_base_slug(base)
+
+    def _ensure_base_slug_len(self, base: str) -> str:
+        """
+        Cuts at the last '-' within the limit, strips leading/trailing dashes,
+        and defaults to 'product' if empty after truncation.
+        """
+        allowed_len = self._config.max_length - self._config.suffix_length
+        if len(base) > allowed_len:
+            last_dash_in_allowed_len = base[:allowed_len].rfind("-")
+            truncated = (
+                base[:last_dash_in_allowed_len]
+                if last_dash_in_allowed_len != -1
+                else base[:allowed_len]
+            ).strip("-")
+            return truncated or "product"
+        return base
+
+    def _suffix_base_slug(self, base: str) -> str:
+        uuid_suffix = uuid.uuid4().hex[: self._config.uuid_suffix_length]
+        return f"{base}-{uuid_suffix}"
+
+    def _make_base(self, name: str) -> str:
+        return slugify(name) or "product"
