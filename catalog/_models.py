@@ -6,8 +6,6 @@ from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
-from django.utils.text import slugify
-from jsonschema import Draft7Validator, SchemaError
 from jsonschema import ValidationError as JSONSchemaValidationError
 
 from catalog.services.slug_service import SlugService, SlugConfig
@@ -27,8 +25,10 @@ class ProductType(models.Model):
     class Meta:
         ordering = ["name"]
 
+    SCHEMA_VALIDATOR = SchemaValidator
+
     def clean(self, *args: Any, **kwargs: Any) -> None:
-        SchemaValidator.validate_schema(self.attributes_schema)
+        self.SCHEMA_VALIDATOR.validate_schema(self.attributes_schema)
         super().clean(*args, **kwargs)
 
     def save(self, *args: Any, **kwargs: Any) -> None:
@@ -58,19 +58,24 @@ class Product(models.Model):
     upc = models.CharField(max_length=100, blank=True)
 
     cost_price = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True,
-        validators=[MinValueValidator(0)]
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
     )
     sale_price = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True,
-        validators=[MinValueValidator(0)]
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
     )
     retail_price = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
     )
     currency = models.CharField(
-        max_length=3, default="EUR",
-        validators=[RegexValidator(r"^[A-Z]{3}$")]
+        max_length=3, default="EUR", validators=[RegexValidator(r"^[A-Z]{3}$")]
     )
     stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
     stock_threshold = models.IntegerField(default=5, validators=[MinValueValidator(0)])
@@ -87,8 +92,11 @@ class Product(models.Model):
     material = models.CharField(max_length=50, blank=True)
 
     variant_of = models.ForeignKey(
-        "self", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="variants"
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="variants",
     )
 
     image_main = models.URLField(blank=True)
@@ -100,8 +108,7 @@ class Product(models.Model):
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
     approval_status = models.CharField(
-        max_length=50, choices=ApprovalStatus.choices,
-        default=ApprovalStatus.PENDING
+        max_length=50, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -120,7 +127,10 @@ class Product(models.Model):
             GinIndex(fields=["attributes"]),
         ]
 
+    SLUG_SERVICE = SlugService
     SLUG_CONFIG = SlugConfig()
+    SCHEMA_VALIDATOR = SchemaValidator
+    VARIANT_VALIDATOR = VariantValidator
 
     @property
     def is_in_stock(self) -> bool:
@@ -134,20 +144,16 @@ class Product(models.Model):
     def subcategory(self) -> str:
         return self._subcategory
 
-    def _slug_exists(self, slug: str) -> bool:
-        qs = Product.objects.filter(slug=slug)
-        if self.pk:
-            qs = qs.exclude(pk=self.pk)
-        return qs.exists()
-
-    def _generate_unique_slug(self) -> str:  #TODO: DI
-        cfg = self.SLUG_CONFIG
-        slug = slugify(self.name) or "product"
-        slug = SlugService.ensure_base_slug_len(slug, cfg)
-
-        while self._slug_exists(slug):
-            slug = SlugService.suffix_base_slug(slug, cfg)
-        return slug
+    def _generate_unique_slug(self) -> str:
+        """
+        Delegates uniqueness logic to the SlugService.
+        """
+        return self.SLUG_SERVICE.generate_unique_slug(
+            model_class=type(self),
+            name=self.name,
+            cfg=self.SLUG_CONFIG,
+            exclude_pk=self.pk,
+        )
 
     def _sync_categories(self) -> None:
         if not self.pk or self.category != self.product_type.category_type:
@@ -155,14 +161,13 @@ class Product(models.Model):
         if not self.pk or self.subcategory != self.product_type.subcategory_type:
             self._subcategory = self.product_type.subcategory_type
 
-    def clean(self) -> None:  #TODO: DI
-        VariantValidator.validate_chain(self)
-        VariantValidator.validate_integrity(self)
+    def clean(self) -> None:
+        self.VARIANT_VALIDATOR.validate_chain(self)
+        self.VARIANT_VALIDATOR.validate_integrity(self)
 
         try:
-            SchemaValidator.validate_attributes(
-                self.product_type.attributes_schema,
-                self.attributes
+            self.SCHEMA_VALIDATOR.validate_attributes(
+                self.product_type.attributes_schema, self.attributes
             )
         except JSONSchemaValidationError as e:
             raise DjangoValidationError({"attributes": str(e)}) from e
@@ -170,9 +175,17 @@ class Product(models.Model):
         super().clean()
 
     def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self.slug or self._slug_exists(self.slug):
-            self.slug = self._generate_unique_slug()
-
+        if not self.slug or self.SLUG_SERVICE.slug_exists(
+            model_class=type(self),
+            slug=self.slug,
+            exclude_pk=self.pk,
+        ):
+            self.slug = self.SLUG_SERVICE.generate_unique_slug(
+                model_class=type(self),
+                name=self.name,
+                cfg=self.SLUG_CONFIG,
+                exclude_pk=self.pk,
+            )
         self._sync_categories()
         self.full_clean()
         super().save(*args, **kwargs)

@@ -5,13 +5,13 @@ from catalog.models import Product
 
 class VariantValidator:
     @staticmethod
-    def validate_chain(product_instance: "Product") -> None:
+    def validate_chain(product_instance: Product) -> None:
         parent = product_instance.variant_of
         seen = set()
 
+        product_key = product_instance.pk or id(product_instance)
         while parent:
             parent_key = parent.pk or id(parent)
-            product_key = product_instance.pk or id(product_instance)
 
             if parent_key == product_key or parent_key in seen:
                 raise DjangoValidationError(
@@ -22,7 +22,7 @@ class VariantValidator:
             parent = parent.variant_of
 
     @staticmethod
-    def validate_integrity(product_instance: "Product") -> None:
+    def validate_integrity(product_instance: Product) -> None:
         parent = product_instance.variant_of
         if not parent:
             return
