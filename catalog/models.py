@@ -1,3 +1,21 @@
+"""
+Product and ProductType models with validation and slug management.
+
+This module defines the core catalog models:
+
+- ProductType: Defines a type of product, including category, subcategory,
+  and JSON schema for attributes.
+- Product: Represents a concrete product instance with pricing, stock, images, 
+  variant relationships, and attribute data.
+
+Features included:
+- JSON schema validation for product attributes via SchemaValidator.
+- Variant relationship integrity and cycle detection via VariantValidator.
+- Unique slug generation via SlugService, with configurable max length
+  and UUID suffix.
+- Cached category/subcategory fields for fast database lookups and indexing.
+- Approval status tracking, stock checks, and basic product metadata.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -14,6 +32,18 @@ from catalog.services.validators.variant import VariantValidator
 
 
 class ProductType(models.Model):
+    """
+    Represents a type of product with category, subcategory, and attribute schema.
+
+    Attributes:
+        name (str): Unique name of the product type.
+        category_type (str): Main category for products of this type.
+        subcategory_type (str): Optional subcategory.
+        attributes_schema (dict): JSON schema defining the attributes for products.
+
+    Validators:
+        SCHEMA_VALIDATOR: Validates `attributes_schema` for correctness.
+    """
     name = models.CharField(max_length=100, unique=True)
     category_type = models.CharField(max_length=100)
     subcategory_type = models.CharField(max_length=100, blank=True)
@@ -28,16 +58,28 @@ class ProductType(models.Model):
     SCHEMA_VALIDATOR = SchemaValidator
 
     def clean(self, *args: Any, **kwargs: Any) -> None:
+        """Validate the JSON schema for correctness before saving."""
         self.SCHEMA_VALIDATOR.validate_schema(self.attributes_schema)
         super().clean(*args, **kwargs)
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        """Run full validation with full_clean() and save the product type."""
         self.full_clean()
         super().save(*args, **kwargs)
 
 
 class Product(models.Model):
+    """
+    Represents a product, including details, pricing, stock, variant relationships,
+    and associated product type.
+
+    Validators and services:
+        SLUG_SERVICE: Generates unique slugs.
+        SCHEMA_VALIDATOR: Validates product attributes.
+        VARIANT_VALIDATOR: Validates variant_of relationships.
+    """
     class ApprovalStatus(models.TextChoices):
+        """Represents the approval state of a product."""
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
@@ -132,23 +174,34 @@ class Product(models.Model):
 
     @property
     def is_in_stock(self) -> bool:
+        """Returns True if `stock_quantity > 0`."""
         return self.stock_quantity > 0
 
     @property
     def category(self) -> str:
+        """Cached category from `product_type`. kept in Product for fast DB retrieve."""
         return self._category
 
     @property
     def subcategory(self) -> str:
+        """Cached subcategory from `product_type`. Kept in Product for fast DB retrieve."""
         return self._subcategory
 
     def _sync_categories(self) -> None:
+        """
+        Sync the product's internal `_category` and `_subcategory` fields
+        with its ProductType.
+
+        These fields are maintained on the Product model for fast database
+        queries and indexing, so lookups can be performed without a join.
+        """
         if not self.pk or self.category != self.product_type.category_type:
             self._category = self.product_type.category_type
         if not self.pk or self.subcategory != self.product_type.subcategory_type:
             self._subcategory = self.product_type.subcategory_type
 
     def clean(self) -> None:
+        """Validate variant chain, variant integrity, and attributes."""
         self.VARIANT_VALIDATOR.validate_chain(self)
         self.VARIANT_VALIDATOR.validate_integrity(self)
 
@@ -162,6 +215,7 @@ class Product(models.Model):
         super().clean()
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        """Generate unique slug, sync categories, run full validation, and save."""
         if not self.slug or self.SLUG_SERVICE.slug_exists(
             model_class=type(self),
             slug=self.slug,
