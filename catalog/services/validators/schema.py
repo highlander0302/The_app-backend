@@ -1,3 +1,14 @@
+"""
+Module for validating JSON schemas and attribute instances.
+
+Provides SchemaValidator with methods to:
+- Check that a schema is valid and conforms to ProductType rules.
+- Validate attribute data against a schema.
+
+Uses jsonschema.Draft7Validator for validation and raises
+DjangoValidationError on failure.
+"""
+
 from typing import Any, Mapping
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -5,17 +16,11 @@ from jsonschema import Draft7Validator, SchemaError
 
 
 class SchemaValidator:
-    """This will be a class for schema validation."""
-
-    @staticmethod
-    def get_validator_for_schema(schema: Mapping[str, Any]) -> Draft7Validator:
-        return Draft7Validator(schema)
+    """Validates JSON schemas and attribute instances."""
 
     @staticmethod
     def validate_schema(schema: Mapping[str, Any]) -> None:
-        """
-        Validate the JSON schema for correctness + enforce ProductType rules.
-        """
+        """Ensure the schema is valid and top-level type is 'object'."""
         try:
             Draft7Validator.check_schema(schema)
         except SchemaError as e:
@@ -25,12 +30,10 @@ class SchemaValidator:
         if schema_type and schema_type != "object":
             raise DjangoValidationError({"attributes_schema": "Top-level type must be 'object'."})
 
-    @staticmethod
-    def validate_attributes(schema: Mapping[str, Any], attributes: Mapping[str, Any]) -> None:
-        """
-        Validate an attributes instance against a schema.
-        """
-        SchemaValidator.validate_schema(schema)
+    @classmethod
+    def validate_attributes(cls, schema: Mapping[str, Any], attributes: Mapping[str, Any]) -> None:
+        """Validate a data instance against the given schema."""
+        cls.validate_schema(schema)
 
-        validator = SchemaValidator.get_validator_for_schema(schema)
+        validator = Draft7Validator(schema)
         validator.validate(instance=attributes)
