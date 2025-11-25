@@ -9,9 +9,14 @@ Includes checks for:
 Raises DjangoValidationError for any violations.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from catalog.models import Product
+if TYPE_CHECKING:
+    from catalog.models import Product
 
 
 class VariantValidator:
