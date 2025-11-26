@@ -99,8 +99,7 @@ class SlugService:
 
     def _ensure_base_slug_len(self, base: str) -> str:
         """
-        Cuts at the last '-' within the limit, strips leading/trailing dashes,
-        and defaults to 'product' if empty after truncation.
+        Cuts at the last '-' within the limit, and defaults to 'product' if empty after truncation.
         """
         allowed_len = self._config.max_length - self._config.suffix_length
         if len(base) > allowed_len:
@@ -109,7 +108,7 @@ class SlugService:
                 base[:last_dash_in_allowed_len]
                 if last_dash_in_allowed_len != -1
                 else base[:allowed_len]
-            ).strip("-")
+            )
             return truncated or "product"
         return base
 

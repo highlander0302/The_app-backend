@@ -5,7 +5,7 @@ This module defines the core catalog models:
 
 - ProductType: Defines a type of product, including category, subcategory,
   and JSON schema for attributes.
-- Product: Represents a concrete product instance with pricing, stock, images, 
+- Product: Represents a concrete product instance with pricing, stock, images,
   variant relationships, and attribute data.
 
 Features included:
@@ -16,15 +16,14 @@ Features included:
 - Cached category/subcategory fields for fast database lookups and indexing.
 - Approval status tracking, stock checks, and basic product metadata.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
 from django.contrib.postgres.indexes import GinIndex
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
-from jsonschema import ValidationError as JSONSchemaValidationError
 
 from catalog.services.slug_service import SlugConfig, SlugService
 from catalog.services.validators.schema import SchemaValidator
@@ -35,19 +34,20 @@ class ProductType(models.Model):
     """
     Represents a type of product with category, subcategory, and attribute schema.
 
-    Attributes:
-        name (str): Unique name of the product type.
-        category_type (str): Main category for products of this type.
-        subcategory_type (str): Optional subcategory.
-        attributes_schema (dict): JSON schema defining the attributes for products.
-
     Validators:
         SCHEMA_VALIDATOR: Validates `attributes_schema` for correctness.
     """
+
     name = models.CharField(max_length=100, unique=True)
-    category_type = models.CharField(max_length=100)
-    subcategory_type = models.CharField(max_length=100, blank=True)
-    attributes_schema = models.JSONField(default=dict)
+    category_type = models.CharField(
+        max_length=100, help_text="Main category for products of this type."
+    )
+    subcategory_type = models.CharField(
+        max_length=100, blank=True, help_text="Optional subcategory."
+    )
+    attributes_schema = models.JSONField(
+        default=dict, help_text="JSON schema defining the attributes for products."
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -78,8 +78,10 @@ class Product(models.Model):
         SCHEMA_VALIDATOR: Validates product attributes.
         VARIANT_VALIDATOR: Validates variant_of relationships.
     """
+
     class ApprovalStatus(models.TextChoices):
         """Represents the approval state of a product."""
+
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
@@ -88,16 +90,34 @@ class Product(models.Model):
     slug = models.SlugField(unique=True, blank=True, max_length=100)
     name = models.CharField(max_length=255)
 
-    _category = models.CharField(max_length=100, blank=True, editable=False)
-    _subcategory = models.CharField(max_length=100, blank=True, editable=False)
+    _category = models.CharField(
+        max_length=100,
+        blank=True,
+        editable=False,
+        help_text="Denormalized copy of ProductType.category_type proxy.",
+    )
+    _subcategory = models.CharField(
+        max_length=100,
+        blank=True,
+        editable=False,
+        help_text="Denormalized copy of ProductType.subcategory_type.",
+    )
 
     description = models.TextField(blank=True)
     short_description = models.CharField(max_length=500, blank=True)
     brand = models.CharField(max_length=100)
     vendor = models.CharField(max_length=100, blank=True)
     tags = models.JSONField(default=list, blank=True)
-    sku = models.CharField(max_length=100, unique=True)
-    upc = models.CharField(max_length=100, blank=True)
+    sku = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Stock Keeping Unit: a unique identifier for product. Used in our shop only.",
+    )
+    upc = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Universal Product Code: an optional global identifier for the product.",
+    )
 
     cost_price = models.DecimalField(
         max_digits=10,
@@ -122,15 +142,27 @@ class Product(models.Model):
     stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
     stock_threshold = models.IntegerField(default=5, validators=[MinValueValidator(0)])
 
-    weight = models.FloatField(null=True, blank=True)
-    length = models.FloatField(null=True, blank=True)
-    width = models.FloatField(null=True, blank=True)
-    height = models.FloatField(null=True, blank=True)
+    weight = models.FloatField(
+        null=True, blank=True, help_text="Weight of the product in grams (g)."
+    )
+    length = models.FloatField(
+        null=True, blank=True, help_text="Length of the product in centimeters (cm)."
+    )
+    width = models.FloatField(
+        null=True, blank=True, help_text="Width of the product in centimeters (cm)."
+    )
+    height = models.FloatField(
+        null=True, blank=True, help_text="Height of the product in centimeters (cm)."
+    )
 
     origin_country = models.CharField(max_length=54, blank=True)
     shipping_required = models.BooleanField(default=True)
     color = models.CharField(max_length=50, blank=True)
-    product_size = models.CharField(max_length=50, blank=True)
+    product_size = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Size of the product in inches (e.g., 12in, 5.5in).",
+    )
     material = models.CharField(max_length=50, blank=True)
 
     variant_of = models.ForeignKey(
@@ -156,8 +188,10 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    attributes = models.JSONField(default=dict)
-    product_type = models.ForeignKey(ProductType, on_delete=models.PROTECT, related_name="products")
+    attributes = models.JSONField(default=dict, help_text="")
+    product_type = models.ForeignKey(
+        ProductType, on_delete=models.PROTECT, related_name="products", help_text=""
+    )
 
     class Meta:
         ordering = ["name"]
@@ -205,12 +239,9 @@ class Product(models.Model):
         self.VARIANT_VALIDATOR.validate_chain(self)
         self.VARIANT_VALIDATOR.validate_integrity(self)
 
-        try:
-            self.SCHEMA_VALIDATOR.validate_attributes(
-                self.product_type.attributes_schema, self.attributes
-            )
-        except JSONSchemaValidationError as e:
-            raise DjangoValidationError({"attributes": str(e)}) from e
+        self.SCHEMA_VALIDATOR.validate_attributes(
+            self.product_type.attributes_schema, self.attributes
+        )
 
         super().clean()
 

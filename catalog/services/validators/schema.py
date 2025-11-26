@@ -6,13 +6,14 @@ Provides SchemaValidator with methods to:
 - Validate attribute data against a schema.
 
 Uses jsonschema.Draft7Validator for validation and raises
-DjangoValidationError on failure.
+ValidationError on failure.
 """
 
 from typing import Any, Mapping
 
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import ValidationError
 from jsonschema import Draft7Validator, SchemaError
+from jsonschema import ValidationError as JSONSchemaValidationError
 
 
 class SchemaValidator:
@@ -24,11 +25,11 @@ class SchemaValidator:
         try:
             Draft7Validator.check_schema(schema)
         except SchemaError as e:
-            raise DjangoValidationError({"attributes_schema": str(e)}) from e
+            raise ValidationError({"attributes_schema": str(e)}) from e
 
         schema_type = schema.get("type")
         if schema_type and schema_type != "object":
-            raise DjangoValidationError({"attributes_schema": "Top-level type must be 'object'."})
+            raise ValidationError({"attributes_schema": "Top-level type must be 'object'."})
 
     @classmethod
     def validate_attributes(cls, schema: Mapping[str, Any], attributes: Mapping[str, Any]) -> None:
@@ -36,4 +37,7 @@ class SchemaValidator:
         cls.validate_schema(schema)
 
         validator = Draft7Validator(schema)
-        validator.validate(instance=attributes)
+        try:
+            validator.validate(instance=attributes)
+        except JSONSchemaValidationError as e:
+            raise ValidationError({"attributes": str(e)}) from e

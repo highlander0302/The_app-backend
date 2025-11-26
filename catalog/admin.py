@@ -2,8 +2,8 @@ from django.contrib import admin
 from django.db.models import JSONField
 from django.forms import Textarea
 
-from .forms import ProductAdminForm
-from .models import Product, ProductType
+from catalog.forms import ProductAdminForm
+from catalog.models import Product, ProductType
 
 
 class VariantInline(admin.TabularInline):
