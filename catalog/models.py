@@ -35,6 +35,9 @@ class ProductType(models.Model):
 
     Validators:
         SCHEMA_VALIDATOR: Validates `attributes_schema` for correctness.
+
+    Field specificity hierarchy:
+        category_type (broad) → subcategory_type (narrower) → name (most specific, unique).
     """
 
     name = models.CharField(max_length=100, unique=True)
