@@ -13,7 +13,6 @@ Features included:
 - Variant relationship integrity and cycle detection via VariantValidator.
 - Unique slug generation via SlugService, with configurable max length
   and UUID suffix.
-- Cached category/subcategory fields for fast database lookups and indexing.
 - Approval status tracking, stock checks, and basic product metadata.
 """
 
@@ -89,19 +88,6 @@ class Product(models.Model):
 
     slug = models.SlugField(unique=True, blank=True, max_length=100)
     name = models.CharField(max_length=255)
-
-    _category = models.CharField(
-        max_length=100,
-        blank=True,
-        editable=False,
-        help_text="Denormalized copy of ProductType.category_type proxy.",
-    )
-    _subcategory = models.CharField(
-        max_length=100,
-        blank=True,
-        editable=False,
-        help_text="Denormalized copy of ProductType.subcategory_type.",
-    )
 
     description = models.TextField(blank=True)
     short_description = models.CharField(max_length=500, blank=True)
@@ -202,8 +188,6 @@ class Product(models.Model):
     class Meta:
         ordering = ["name"]
         indexes = [
-            models.Index(fields=["_category"]),
-            models.Index(fields=["_category", "_subcategory"]),
             GinIndex(fields=["attributes"]),
         ]
 
@@ -219,26 +203,13 @@ class Product(models.Model):
 
     @property
     def category(self) -> str:
-        """Cached category from `product_type`. kept in Product for fast DB retrieve."""
-        return self._category
+        """Category from `product_type`."""
+        return self.product_type.category_type
 
     @property
     def subcategory(self) -> str:
-        """Cached subcategory from `product_type`. Kept in Product for fast DB retrieve."""
-        return self._subcategory
-
-    def _sync_categories(self) -> None:
-        """
-        Sync the product's internal `_category` and `_subcategory` fields
-        with its ProductType.
-
-        These fields are maintained on the Product model for fast database
-        queries and indexing, so lookups can be performed without a join.
-        """
-        if not self.pk or self.category != self.product_type.category_type:
-            self._category = self.product_type.category_type
-        if not self.pk or self.subcategory != self.product_type.subcategory_type:
-            self._subcategory = self.product_type.subcategory_type
+        """Subcategory from `product_type`."""
+        return self.product_type.subcategory_type
 
     def clean(self) -> None:
         """Validate variant chain, variant integrity, and attributes."""
@@ -263,6 +234,5 @@ class Product(models.Model):
                 name=self.name,
                 exclude_pk=self.pk,
             )
-        self._sync_categories()
         self.full_clean()
         super().save(*args, **kwargs)

@@ -48,11 +48,11 @@ class ProductAdmin(admin.ModelAdmin):
         "is_active",
         "approval_status",
     )
-    list_filter = ("is_active", "approval_status", "_category")
+    list_filter = ("is_active", "approval_status")
     search_fields = ("name", "sku", "brand", "vendor")
     raw_id_fields = ("product_type", "variant_of")
     inlines = [VariantInline]
-    readonly_fields = ("slug", "_category", "_subcategory", "created_at", "updated_at")
+    readonly_fields = ("slug", "created_at", "updated_at")
 
     fieldsets = (
         (
