@@ -188,9 +188,15 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    attributes = models.JSONField(default=dict, help_text="")
+    attributes = models.JSONField(
+        default=dict,
+        help_text="Product-specific attributes defined by the product type schema.",
+    )
     product_type = models.ForeignKey(
-        ProductType, on_delete=models.PROTECT, related_name="products", help_text=""
+        ProductType,
+        on_delete=models.PROTECT,
+        related_name="products",
+        help_text="The type of product, which defines category, subcategory, and attributes.",
     )
 
     class Meta:
