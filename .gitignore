@@ -134,3 +134,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# Nvim
+catalog/services/.null-ls_*
+*.null-ls_*
+**/.null-ls_*
