@@ -57,6 +57,11 @@ class ProductType(models.Model):
     class Meta:
         ordering = ["name"]
 
+    def __str__(self) -> str:
+        if self.subcategory_type:
+            return f"{self.name} ({self.category_type} → {self.subcategory_type})"
+        return f"{self.name} ({self.category_type})"
+
     SCHEMA_VALIDATOR = SchemaValidator
 
     def clean(self, *args: Any, **kwargs: Any) -> None:
@@ -198,6 +203,9 @@ class Product(models.Model):
     SLUG_SERVICE = SlugService(SLUG_CONFIG)
     SCHEMA_VALIDATOR = SchemaValidator
     VARIANT_VALIDATOR = VariantValidator
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.sku}]"
 
     @property
     def is_in_stock(self) -> bool:
