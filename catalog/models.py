@@ -71,7 +71,6 @@ class ProductType(models.Model):
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """Run full validation with full_clean() and save the product type."""
-        self.full_clean()
         super().save(*args, **kwargs)
 
 
@@ -175,6 +174,7 @@ class Product(models.Model):
 
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
+    is_on_sale = models.BooleanField(default=False)
     approval_status = models.CharField(
         max_length=50, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING
     )
@@ -222,6 +222,11 @@ class Product(models.Model):
         """Subcategory from `product_type`."""
         return self.product_type.subcategory_type
 
+    @property
+    def price(self) -> float:
+        """Returns the price depending on sale status"""
+        return self.sale_price if self.is_on_sale else self.cost_price
+
     def clean(self) -> None:
         """Validate variant chain, variant integrity, and attributes."""
         self.VARIANT_VALIDATOR.validate_chain(self)
@@ -245,5 +250,4 @@ class Product(models.Model):
                 name=self.name,
                 exclude_pk=self.pk,
             )
-        self.full_clean()
         super().save(*args, **kwargs)

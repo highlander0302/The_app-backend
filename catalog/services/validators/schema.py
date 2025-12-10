@@ -11,9 +11,8 @@ ValidationError on failure.
 
 from typing import Any, Mapping
 
-from django.core.exceptions import ValidationError
 from jsonschema import Draft7Validator, SchemaError
-from jsonschema import ValidationError as JSONSchemaValidationError
+from rest_framework.exceptions import ValidationError
 
 
 class SchemaValidator:
@@ -37,7 +36,14 @@ class SchemaValidator:
         cls.validate_schema(schema)
 
         validator = Draft7Validator(schema)
-        try:
-            validator.validate(instance=attributes)
-        except JSONSchemaValidationError as e:
-            raise ValidationError({"attributes": str(e)}) from e
+        errors = sorted(validator.iter_errors(attributes), key=lambda e: e.path)
+
+        if not errors:
+            return
+
+        error_dict: dict[str, list[str]] = {}
+        for err in errors:
+            field = ".".join([str(p) for p in err.path]) or "__all__"
+            error_dict.setdefault(field, []).append(err.message)
+
+        raise ValidationError({"attributes": error_dict})
