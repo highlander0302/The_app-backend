@@ -1,3 +1,11 @@
+"""
+User and authentication models.
+
+Contains the main User model and related models for authentication.
+The User model holds core account data, while external login methods
+are stored separately in AuthProvider.
+"""
+
 from typing import ClassVar
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
@@ -39,7 +47,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD: ClassVar[str] = "email"
-    REQUIRED_FIELDS: ClassVar[list[str]] = []  # email is required and the username field
+    REQUIRED_FIELDS: ClassVar[list[str]] = []
 
     class Meta:
         ordering = ("-date_joined",)
@@ -49,42 +57,56 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self) -> str:
         return self.email
 
-    @property
-    def is_verified(self) -> bool:
-        """Ensures that is_verified is read-only."""
-        return self.is_email_verified
+
+class ProviderChoices(models.TextChoices):
+    """
+    Defines the allowed external authentication providers.
+
+    Using TextChoices centralizes provider values, prevents typos.
+    """
+
+    LOCAL = "local", "Local"
+    GOOGLE = "google", "Google"
+    GITHUB = "github", "GitHub"
+    FACEBOOK = "facebook", "Facebook"
 
 
 class AuthProvider(models.Model):
     """
-    Links external auth providers (Google, GitHub, Apple, etc.) to a User.
-    This makes it straightforward to:
-      - attach multiple providers to one user
-      - store provider-specific flags (e.g. email_verified_by_provider)
-      - revoke provider links independently
+    Links a User to external authentication providers.
+
+    Separating providers from User allows one account to have multiple
+    login methods and keeps provider-specific data out of the core user model.
     """
 
-    PROVIDER_CHOICES = (
-        ("local", "Local"),
-        ("google", "Google"),
-        ("github", "GitHub"),
-        ("apple", "Apple"),
-        ("facebook", "Facebook"),
+    user = models.ForeignKey(
+        "User",
+        related_name="auth_providers",
+        on_delete=models.CASCADE,
     )
-
-    user = models.ForeignKey(User, related_name="auth_providers", on_delete=models.CASCADE)
-    provider = models.CharField(max_length=50, choices=PROVIDER_CHOICES)
+    provider = models.CharField(
+        max_length=50,
+        choices=ProviderChoices.choices,
+    )
     provider_uid = models.CharField(
-        max_length=255, help_text="Unique id returned by provider", db_index=True
+        max_length=1024,
+        db_index=True,
     )
-    email = models.EmailField(help_text="Email returned by provider", blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     email_verified_by_provider = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("provider", "provider_uid")
-        indexes = [
-            models.Index(fields=["provider", "provider_uid"]),
+        """
+        Ensures each external provider account can be linked to only one user.
+        Prevents duplicate or conflicting identity links.
+        """
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "provider_uid"],
+                name="uniq_provider_uid",
+            )
         ]
 
     def __str__(self) -> str:

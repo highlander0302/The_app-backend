@@ -1,8 +1,17 @@
-from typing import Any
+"""
+User model manager.
+
+Defines a single entry point for creating User instances.
+Managers centralize creation logic and enforce core invariants (identity,
+security, and role consistency) across all user creation paths.
+"""
+
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth.base_user import BaseUserManager
 
-from .models import User
+if TYPE_CHECKING:
+    from .models import User
 
 
 class UserManager(BaseUserManager):
@@ -15,20 +24,30 @@ class UserManager(BaseUserManager):
 
     use_in_migrations = True
 
-    def _create_user(self, email: str, password: str | None, **extra_fields: Any) -> User:
+    def _create_user(self, email: str, password: str, **extra_fields: Any) -> "User":
+        """
+        Internal helper that performs the actual User creation.
+
+        Orchestrates logic for email normalization, password hashing,
+        and persistence.
+        """
         if not email:
             raise ValueError("The Email field must be set")
-        email = self.normalize_email(email)
+        email = self.normalize_email(email).strip().lower()
         user = self.model(email=email, **extra_fields)
 
-        # password hashing
         user.set_password(password)
 
         user.save(using=self._db)
         return user
 
-    def create_user(self, email: str, password: str | None = None, **extra_fields: Any) -> User:
-        # sensible defaults for a normal user
+    def create_user(self, email: str, password: str, **extra_fields: Any) -> "User":
+        """
+        Creates a standard (non-staff, non-admin) user.
+
+        Applies safe default flags for regular accounts and delegates
+        creation self._create_user().
+        """
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)
         extra_fields.setdefault("is_active", True)
@@ -36,8 +55,13 @@ class UserManager(BaseUserManager):
 
         return self._create_user(email, password, **extra_fields)
 
-    def create_superuser(self, email: str, password: str | None, **extra_fields: Any) -> User:
-        # enforce admin invariants
+    def create_superuser(self, email: str, password: str, **extra_fields: Any) -> "User":
+        """
+        Creates an administrative user with extended permissions.
+
+        Enforces required 'staff' and 'superuser' flags to prevent
+        misconfigured admin accounts.
+        """
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
